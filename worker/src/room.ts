@@ -18,23 +18,34 @@ interface ClientState {
   lastPing: number;
 }
 
+interface RoomConfig {
+  token: string;
+  pairSecret: string;
+  tokenConsumed: boolean;
+  tokenExpiresAt: number;
+}
+
 export class SinputRoom implements DurableObject {
   private state: DurableObjectState;
   private clients: Map<WebSocket, ClientState> = new Map();
-  private token: string | null = null;
-  private pairSecret: string | null = null;
-  private tokenConsumed = false;
-  private tokenExpiresAt = 0;
+  private config: RoomConfig | null = null;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private destroyTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(state: DurableObjectState, _env: unknown) {
     this.state = state;
+
+    // Restore WebSocket clients from hibernation
     this.state.getWebSockets().forEach((ws) => {
-      const meta = ws.deserializeAttachment() as ClientState | null;
+      const meta = ws.deserializeAttachment() as Omit<ClientState, "ws"> | null;
       if (meta) {
         this.clients.set(ws, { ...meta, ws });
       }
+    });
+
+    // Load persisted room config from storage
+    this.state.blockConcurrencyWhile(async () => {
+      this.config = (await this.state.storage.get<RoomConfig>("config")) ?? null;
     });
   }
 
@@ -43,16 +54,19 @@ export class SinputRoom implements DurableObject {
 
     // POST /init — initialize room
     if (url.pathname === "/init" && request.method === "POST") {
-      this.token = crypto.randomUUID();
-      this.pairSecret = crypto.randomUUID();
-      this.tokenConsumed = false;
-      this.tokenExpiresAt = Date.now() + TOKEN_EXPIRY_MS;
+      this.config = {
+        token: crypto.randomUUID(),
+        pairSecret: crypto.randomUUID(),
+        tokenConsumed: false,
+        tokenExpiresAt: Date.now() + TOKEN_EXPIRY_MS,
+      };
+      await this.state.storage.put("config", this.config);
       this.scheduleDestroy();
       return new Response(
         JSON.stringify({
-          token: this.token,
-          pairSecret: this.pairSecret,
-          expiresAt: this.tokenExpiresAt,
+          token: this.config.token,
+          pairSecret: this.config.pairSecret,
+          expiresAt: this.config.tokenExpiresAt,
         }),
         { headers: { "Content-Type": "application/json" } }
       );
@@ -82,7 +96,7 @@ export class SinputRoom implements DurableObject {
 
     switch (msg.type) {
       case "auth":
-        this.handleAuth(ws, msg);
+        await this.handleAuth(ws, msg);
         break;
       case "text":
         this.handleText(ws, msg);
@@ -111,9 +125,15 @@ export class SinputRoom implements DurableObject {
 
   // --- Handlers ---
 
-  private handleAuth(ws: WebSocket, msg: AuthMessage) {
+  private async handleAuth(ws: WebSocket, msg: AuthMessage) {
+    if (!this.config) {
+      this.sendTo(ws, { type: "error", code: "UNKNOWN", message: "Room not initialized" });
+      ws.close(4000, "ROOM_NOT_INIT");
+      return;
+    }
+
     // Validate pairSecret
-    if (msg.pairSecret !== this.pairSecret) {
+    if (msg.pairSecret !== this.config.pairSecret) {
       this.sendTo(ws, { type: "error", code: "AUTH_FAILED", message: "Invalid pair secret" });
       ws.close(4001, "AUTH_FAILED");
       return;
@@ -121,17 +141,18 @@ export class SinputRoom implements DurableObject {
 
     // For phone role, validate token on first connection
     if (msg.role === "phone" && !this.hasClientWithRole("phone")) {
-      if (this.tokenConsumed) {
+      if (this.config.tokenConsumed) {
         this.sendTo(ws, { type: "error", code: "TOKEN_CONSUMED", message: "Token already used" });
         ws.close(4002, "TOKEN_CONSUMED");
         return;
       }
-      if (Date.now() > this.tokenExpiresAt) {
+      if (Date.now() > this.config.tokenExpiresAt) {
         this.sendTo(ws, { type: "error", code: "TOKEN_EXPIRED", message: "Token expired" });
         ws.close(4003, "TOKEN_EXPIRED");
         return;
       }
-      this.tokenConsumed = true;
+      this.config.tokenConsumed = true;
+      await this.state.storage.put("config", this.config);
     }
 
     // Check if role slot is already taken by a different device
@@ -155,7 +176,7 @@ export class SinputRoom implements DurableObject {
       lastPing: Date.now(),
     };
     this.clients.set(ws, clientState);
-    ws.serializeAttachment(clientState);
+    ws.serializeAttachment({ role: msg.role, deviceId: msg.deviceId, lastPing: clientState.lastPing });
 
     this.cancelDestroy();
     this.broadcastStatus();
@@ -249,9 +270,9 @@ export class SinputRoom implements DurableObject {
 
   private scheduleDestroy() {
     this.cancelDestroy();
-    this.destroyTimeout = setTimeout(() => {
+    this.destroyTimeout = setTimeout(async () => {
       this.stopHeartbeatCheck();
-      // Durable Object will be evicted by the runtime after inactivity
+      await this.state.storage.deleteAll();
     }, ROOM_DESTROY_TIMEOUT_MS);
   }
 

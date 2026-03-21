@@ -2,8 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 // --- Config ---
-const API_BASE = "https://sinput-worker.zhangxinhao-aee.workers.dev";
-const WS_BASE = "wss://sinput-worker.zhangxinhao-aee.workers.dev";
+const API_BASE = "https://ws.sinput.jowork.work";
+const WS_BASE = "wss://ws.sinput.jowork.work";
 const PWA_BASE = "https://sinput.jowork.work";
 
 // --- State ---
