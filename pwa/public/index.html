@@ -455,7 +455,7 @@ function checkA2HS() {
   // Show only on iOS Safari, not in standalone mode, and not dismissed
   const isIOS = /iPhone|iPad/.test(navigator.userAgent);
   const isStandalone = window.matchMedia("(display-mode: standalone)").matches
-    || (navigator as any).standalone;
+    || navigator.standalone;
   const dismissed = localStorage.getItem("sinput_a2hs_dismissed");
 
   if (isIOS && !isStandalone && !dismissed) {
