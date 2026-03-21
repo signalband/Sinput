@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="zh" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0A0A0A">
+<link rel="manifest" href="/manifest.json">
+<title>Sinput</title>
+<style>
+  :root {
+    --green: #22C55E;
+    --green-aa: #16A34A;
+    --red: #EF4444;
+    --amber: #F59E0B;
+  }
+  [data-theme="dark"] {
+    --bg: #0A0A0A;
+    --surface: #171717;
+    --text: #FAFAFA;
+    --text2: #A3A3A3;
+    --border: #262626;
+  }
+  [data-theme="light"] {
+    --bg: #FAFAFA;
+    --surface: #FFFFFF;
+    --text: #171717;
+    --text2: #737373;
+    --border: #E5E5E5;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    touch-action: manipulation;
+  }
+
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .app {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    padding-top: env(safe-area-inset-top, 16px);
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+    max-height: 100vh;
+    max-height: 100dvh;
+  }
+
+  /* Status bar */
+  .status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 0;
+    font-size: 13px;
+    font-weight: 500;
+    flex-shrink: 0;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    transition: background 0.3s;
+  }
+
+  .status-dot.connected {
+    background: var(--green);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  .status-dot.disconnected { background: var(--red); }
+  .status-dot.connecting { background: var(--amber); animation: pulse 1s ease-in-out infinite; }
+
+  .status-text { transition: color 0.3s; }
+  .status-text.connected { color: var(--green); }
+  .status-text.disconnected { color: var(--red); }
+  .status-text.connecting { color: var(--amber); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.9); }
+  }
+
+  /* Ack feedback */
+  .ack {
+    text-align: center;
+    font-size: 13px;
+    color: var(--green);
+    height: 20px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    flex-shrink: 0;
+  }
+  .ack.visible { opacity: 1; }
+  .ack.magic { font-size: 14px; }
+
+  /* Textarea */
+  .input-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    margin: 8px 0;
+  }
+
+  #textInput {
+    flex: 1;
+    width: 100%;
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    resize: none;
+    outline: none;
+    transition: border-color 0.15s;
+    -webkit-appearance: none;
+  }
+
+  #textInput:focus { border-color: var(--green); }
+  #textInput::placeholder { color: var(--text2); }
+
+  /* Bottom */
+  .bottom {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  #sendBtn {
+    width: 100%;
+    padding: 14px;
+    background: var(--green);
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    font-family: system-ui;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+    min-height: 48px;
+  }
+
+  #sendBtn:active { background: var(--green-aa); }
+  #sendBtn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .hint {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text2);
+  }
+
+  /* A2HS banner */
+  .a2hs {
+    display: none;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 8px;
+    flex-shrink: 0;
+  }
+
+  .a2hs.show { display: block; }
+
+  .a2hs-text {
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.6;
+    margin-bottom: 8px;
+  }
+
+  .a2hs-dismiss {
+    font-size: 11px;
+    color: var(--text2);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+
+  /* Error overlay */
+  .error-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 10;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 32px;
+  }
+  .error-overlay.show { display: flex; }
+  .error-title { font-size: 18px; font-weight: 600; }
+  .error-msg { font-size: 14px; color: var(--text2); text-align: center; }
+  .error-retry {
+    padding: 12px 24px;
+    background: var(--green);
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <div class="status" aria-live="polite">
+      <div class="status-dot connecting" id="statusDot"></div>
+      <span class="status-text connecting" id="statusText">连接中...</span>
+    </div>
+
+    <div class="ack" id="ack" role="status"></div>
+
+    <div class="input-area">
+      <textarea id="textInput" placeholder="拿起手机，说..." autofocus></textarea>
+    </div>
+
+    <div class="bottom">
+      <div class="a2hs" id="a2hs">
+        <div class="a2hs-text">
+          添加到主屏幕，下次直接点图标打开：<br>
+          点击底部 <strong>分享按钮 ↑</strong> → 选择 <strong>"添加到主屏幕"</strong>
+        </div>
+        <button class="a2hs-dismiss" onclick="dismissA2hs()">知道了</button>
+      </div>
+      <button id="sendBtn" disabled>发送</button>
+      <div class="hint">使用任意输入法语音输入</div>
+    </div>
+  </div>
+
+  <div class="error-overlay" id="errorOverlay">
+    <div class="error-title" id="errorTitle">连接失败</div>
+    <div class="error-msg" id="errorMsg"></div>
+    <button class="error-retry" onclick="location.reload()">重试</button>
+  </div>
+
+<script>
+// --- Config ---
+const API_BASE = location.hostname === "localhost"
+  ? "ws://localhost:8787"
+  : "wss://sinput-worker.zhangxinhao-aee.workers.dev";
+
+// --- State ---
+let ws = null;
+let desktopOnline = false;
+let isFirstSend = true;
+let heartbeatTimer = null;
+let reconnectTimer = null;
+let reconnectAttempt = 0;
+const MAX_RECONNECT_DELAY = 10000;
+
+// Parse room info from URL
+const params = new URLSearchParams(location.search);
+const roomId = params.get("room");
+const pairSecret = params.get("secret");
+const deviceId = localStorage.getItem("sinput_device_id") || crypto.randomUUID();
+localStorage.setItem("sinput_device_id", deviceId);
+
+// --- Elements ---
+const statusDot = document.getElementById("statusDot");
+const statusText = document.getElementById("statusText");
+const ackEl = document.getElementById("ack");
+const textInput = document.getElementById("textInput");
+const sendBtn = document.getElementById("sendBtn");
+const errorOverlay = document.getElementById("errorOverlay");
+const errorTitle = document.getElementById("errorTitle");
+const errorMsg = document.getElementById("errorMsg");
+const a2hsEl = document.getElementById("a2hs");
+
+// --- Validate ---
+if (!roomId || !pairSecret) {
+  showError("无效链接", "请从电脑端重新扫码配对");
+}
+
+// --- Connect ---
+function connect() {
+  if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
+
+  setStatus("connecting", "连接中...");
+
+  const wsUrl = API_BASE.replace(/^http/, "ws") + `/api/room/${roomId}/ws`;
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({
+      type: "auth",
+      pairSecret,
+      deviceId,
+      role: "phone",
+    }));
+    reconnectAttempt = 0;
+    startHeartbeat();
+  };
+
+  ws.onmessage = (e) => {
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+
+    switch (msg.type) {
+      case "status":
+        desktopOnline = msg.desktopOnline;
+        if (desktopOnline) {
+          setStatus("connected", "已连接");
+          sendBtn.disabled = false;
+          checkA2HS();
+        } else {
+          setStatus("disconnected", "等待电脑连接");
+          sendBtn.disabled = true;
+        }
+        break;
+
+      case "ack":
+        showAck();
+        break;
+
+      case "pong":
+        break;
+
+      case "error":
+        if (msg.code === "AUTH_FAILED" || msg.code === "TOKEN_EXPIRED" || msg.code === "TOKEN_CONSUMED") {
+          showError("配对失败", msg.message + "\n请从电脑端重新扫码");
+        }
+        break;
+    }
+  };
+
+  ws.onclose = (e) => {
+    stopHeartbeat();
+    if (e.code >= 4001 && e.code <= 4004) return; // Auth failure, don't reconnect
+    setStatus("disconnected", "已断开");
+    sendBtn.disabled = true;
+    scheduleReconnect();
+  };
+
+  ws.onerror = () => {
+    // onclose will fire after this
+  };
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  const delay = Math.min(1000 * Math.pow(2, reconnectAttempt), MAX_RECONNECT_DELAY);
+  reconnectAttempt++;
+  setStatus("connecting", "重新连接中...");
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connect();
+  }, delay);
+}
+
+// --- Heartbeat ---
+function startHeartbeat() {
+  stopHeartbeat();
+  heartbeatTimer = setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "ping" }));
+    }
+  }, 30000);
+}
+
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
+
+// --- Send ---
+function send() {
+  const text = textInput.value.trim();
+  if (!text || !ws || ws.readyState !== WebSocket.OPEN || !desktopOnline) return;
+
+  ws.send(JSON.stringify({
+    type: "text",
+    text,
+    ts: Date.now(),
+  }));
+
+  textInput.value = "";
+  textInput.focus();
+}
+
+sendBtn.addEventListener("click", send);
+
+// Enter to send (but allow Shift+Enter for newline)
+textInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    send();
+  }
+});
+
+// --- Status UI ---
+function setStatus(state, text) {
+  statusDot.className = "status-dot " + state;
+  statusText.className = "status-text " + state;
+  statusText.textContent = text;
+}
+
+// --- Ack feedback ---
+function showAck() {
+  if (isFirstSend) {
+    ackEl.textContent = "✨ 已到达电脑光标";
+    ackEl.classList.add("magic");
+    isFirstSend = false;
+    localStorage.setItem("sinput_first_send_done", "1");
+  } else {
+    ackEl.textContent = "✓";
+    ackEl.classList.remove("magic");
+  }
+  ackEl.classList.add("visible");
+  setTimeout(() => ackEl.classList.remove("visible"), isFirstSend ? 1500 : 800);
+}
+
+// Restore first-send state
+if (localStorage.getItem("sinput_first_send_done")) {
+  isFirstSend = false;
+}
+
+// --- Error ---
+function showError(title, msg) {
+  errorTitle.textContent = title;
+  errorMsg.textContent = msg;
+  errorOverlay.classList.add("show");
+}
+
+// --- A2HS ---
+function checkA2HS() {
+  // Show only on iOS Safari, not in standalone mode, and not dismissed
+  const isIOS = /iPhone|iPad/.test(navigator.userAgent);
+  const isStandalone = window.matchMedia("(display-mode: standalone)").matches
+    || (navigator as any).standalone;
+  const dismissed = localStorage.getItem("sinput_a2hs_dismissed");
+
+  if (isIOS && !isStandalone && !dismissed) {
+    a2hsEl.classList.add("show");
+  }
+}
+
+function dismissA2hs() {
+  a2hsEl.classList.remove("show");
+  localStorage.setItem("sinput_a2hs_dismissed", "1");
+}
+
+// --- Visibility change (reconnect) ---
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      reconnectAttempt = 0;
+      connect();
+    }
+  }
+});
+
+// --- Viewport resize (keyboard) ---
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", () => {
+    document.documentElement.style.setProperty(
+      "--vh",
+      window.visualViewport.height + "px"
+    );
+    document.querySelector(".app").style.height = window.visualViewport.height + "px";
+  });
+}
+
+// --- Init ---
+if (roomId && pairSecret) {
+  connect();
+}
+</script>
+</body>
+</html>

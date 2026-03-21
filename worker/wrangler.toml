@@ -1,0 +1,15 @@
+name = "sinput-worker"
+main = "src/index.ts"
+compatibility_date = "2025-03-21"
+
+[durable_objects]
+bindings = [
+  { name = "SINPUT_ROOM", class_name = "SinputRoom" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SinputRoom"]
+
+[vars]
+ENVIRONMENT = "production"

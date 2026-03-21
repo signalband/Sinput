@@ -1,0 +1,16 @@
+{
+  "name": "sinput",
+  "private": true,
+  "version": "0.1.0",
+  "description": "手机语音输入直达电脑光标",
+  "scripts": {
+    "dev:worker": "cd worker && pnpm dev",
+    "dev:pwa": "cd pwa && pnpm dev",
+    "dev:desktop": "cd desktop && pnpm tauri dev",
+    "build:worker": "cd worker && pnpm build",
+    "build:pwa": "cd pwa && pnpm build",
+    "build:desktop": "cd desktop && pnpm tauri build",
+    "deploy:worker": "cd worker && pnpm deploy",
+    "test": "cd worker && pnpm test"
+  }
+}
