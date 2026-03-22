@@ -3,23 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sinput 设置</title>
+  <title>Sinput</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1/dist/fonts/geist-sans/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1/dist/fonts/geist-mono/style.css">
   <script type="module" src="/src/main.ts" defer></script>
   <style>
     :root {
-      --green: #34C759; --red: #FF3B30; --amber: #FF9F0A;
-      --bg: #1C1C1E; --surface: #2C2C2E; --text: #F5F5F7;
-      --text2: #98989D; --border: #38383A;
+      --green: #22C55E; --green-aa: #16A34A;
+      --red: #EF4444; --amber: #F59E0B;
+      --bg: #0A0A0A; --surface: #171717; --text: #FAFAFA;
+      --text2: #A3A3A3; --border: #262626;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      font-family: 'Geist', system-ui, -apple-system, sans-serif;
       background: var(--bg); color: var(--text);
       padding: 24px; user-select: none; -webkit-user-select: none;
     }
     h1 { font-size: 20px; font-weight: 600; margin-bottom: 20px; }
     .card {
-      background: var(--surface); border-radius: 10px;
+      background: var(--surface); border-radius: 8px;
       padding: 16px; margin-bottom: 12px;
     }
     .card-title {
@@ -30,91 +33,129 @@
     .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
     .dot.on { background: var(--green); }
     .dot.off { background: var(--red); }
-    .dot.wait { background: var(--amber); animation: p 1s ease-in-out infinite; }
-    @keyframes p { 0%,100%{opacity:1} 50%{opacity:.4} }
+    .dot.wait { background: var(--amber); animation: pulse 2s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.95)} }
     .status-text { font-size: 15px; font-weight: 500; }
     .qr-section { display: flex; flex-direction: column; align-items: center; gap: 8px; }
     #qrContainer {
-      width: 180px; height: 180px; background: #fff;
+      width: 140px; height: 140px; background: #fff;
       border-radius: 8px; padding: 10px;
       display: flex; align-items: center; justify-content: center;
     }
     #qrContainer img { width: 100%!important; height: 100%!important; }
-    .qr-hint { font-size: 12px; color: var(--text2); }
     .last-msg {
       font-size: 13px; color: var(--text2); background: var(--bg);
-      padding: 8px 10px; border-radius: 6px; margin-top: 10px;
+      padding: 8px 10px; border-radius: 4px; margin-top: 10px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .divider { height: 1px; background: var(--border); margin: 12px 0; }
+
+    /* Buttons — min 48px touch target */
     .btn-link {
-      display: block; width: 100%; padding: 10px; border-radius: 8px;
+      display: block; width: 100%; padding: 14px; border-radius: 8px;
       font-size: 13px; cursor: pointer; border: none; text-align: center;
-      background: transparent; color: var(--text2);
+      background: transparent; color: var(--text2); min-height: 48px;
     }
     .btn-link:hover { color: var(--text); }
+    .btn-link.confirm { color: var(--red); font-weight: 600; }
+
     .flash {
       position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
       background: var(--green); color: #fff; padding: 4px 14px;
-      border-radius: 6px; font-size: 13px; font-weight: 500;
+      border-radius: 4px; font-size: 13px; font-weight: 500;
       opacity: 0; transition: opacity .15s; pointer-events: none;
     }
     .flash.show { opacity: 1; }
 
-    /* Permission banner — inline, not overlay */
+    /* Pair code fade transition */
+    .code-fade { transition: opacity 0.2s ease-out; }
+
+    /* Permission banner — amber 20% opacity bg */
     .perm-banner {
-      background: #332A00; border: 1px solid #665500; border-radius: 10px;
-      padding: 14px 16px; margin-bottom: 12px;
+      background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3);
+      border-radius: 8px; padding: 14px 16px; margin-bottom: 12px;
     }
     .perm-banner .title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
     .perm-banner .desc { font-size: 12px; color: var(--text2); line-height: 1.5; margin-bottom: 10px; }
     .perm-banner .steps { font-size: 12px; color: var(--text2); line-height: 1.8; margin-bottom: 10px; }
     .perm-banner .steps b { color: var(--text); }
     .btn-perm {
-      display: inline-block; padding: 8px 16px; border-radius: 6px;
+      display: inline-block; padding: 8px 16px; border-radius: 8px;
       font-size: 13px; font-weight: 500; cursor: pointer; border: none;
       background: var(--amber); color: #000;
     }
     .btn-perm:active { opacity: 0.8; }
+
+    /* State-driven visibility */
+    [data-state] { display: none; }
+    [data-state].active { display: block; }
   </style>
 </head>
 <body>
   <h1>Sinput</h1>
 
-  <!-- Permission banner — only shown when not authorized, inline above QR -->
+  <!-- Permission banner — only shown when not authorized -->
   <div class="perm-banner" id="permBanner" style="display:none">
-    <div class="title">⚠️ 需要辅助功能权限</div>
-    <div class="desc">Sinput 需要此权限才能将语音转文字注入到光标位置。</div>
+    <div class="title">需要辅助功能权限</div>
+    <div class="desc">Sinput 需要此权限才能将文字注入到光标位置。</div>
     <div class="steps">
       <b>1.</b> 点击下方按钮打开系统设置<br>
       <b>2.</b> 找到 <b>Sinput</b>，打开开关<br>
-      <b>3.</b> 回到这里，继续扫码
+      <b>3.</b> 回到这里，继续配对
     </div>
     <button class="btn-perm" id="permBtn">打开系统设置</button>
   </div>
 
-  <!-- Status -->
+  <!-- Status — always visible, aria-live for screen readers -->
   <div class="card">
     <div class="card-title">连接状态</div>
-    <div class="status-row">
+    <div class="status-row" aria-live="polite" role="status">
       <div class="dot off" id="statusDot"></div>
       <span class="status-text" id="statusText">未连接</span>
     </div>
     <div class="last-msg" id="lastMsg" style="display:none"></div>
   </div>
 
-  <!-- QR -->
-  <div class="card" id="qrCard">
-    <div class="card-title">扫码配对</div>
+  <!-- Pairing view — shown when unpaired or paired-waiting -->
+  <div data-state="pairing" id="pairingView" class="card active">
+    <div class="card-title">配对</div>
+
+    <!-- Short code -->
+    <div style="text-align:center;margin-bottom:14px">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:6px">在手机端输入配对码</div>
+      <div id="pairCode" class="code-fade" style="font-family:'Geist Mono',monospace;font-size:36px;font-weight:700;letter-spacing:8px;font-variant-numeric:tabular-nums">------</div>
+      <div style="font-size:11px;color:var(--text2);margin-top:4px">
+        <span id="countdown">30</span>秒后刷新
+      </div>
+    </div>
+
+    <div style="height:1px;background:var(--border);margin:12px 0"></div>
+
+    <!-- QR as alternative -->
     <div class="qr-section">
-      <div id="qrContainer"><span style="color:#999;font-size:12px">生成中...</span></div>
-      <div class="qr-hint">用手机相机扫码连接</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:6px">或扫码配对</div>
+      <div id="qrContainer"><span style="color:var(--text2);font-size:12px">生成中...</span></div>
     </div>
   </div>
 
-  <div class="divider"></div>
-  <button class="btn-link" id="disconnectBtn" style="display:none;color:var(--red)">断开连接</button>
-  <button class="btn-link" id="repairBtn">重新生成配对码</button>
+  <!-- Connected view — shown when paired-connected -->
+  <div data-state="connected" id="connectedView">
+    <div class="divider"></div>
+    <button class="btn-link" id="disconnectBtn" style="color:var(--red)">断开连接</button>
+  </div>
+
+  <!-- Reconnect failed view -->
+  <div data-state="failed" id="failedView" class="card" style="text-align:center;padding:24px">
+    <div style="font-size:15px;font-weight:500;margin-bottom:8px">连接失败</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:16px">无法连接到服务器</div>
+    <button class="btn-link" id="retryBtn" style="background:var(--surface);color:var(--green)">重试</button>
+  </div>
+
+  <!-- Always available: repair button (when pairing view is shown) -->
+  <div id="repairSection">
+    <div class="divider"></div>
+    <button class="btn-link" id="repairBtn">重新生成配对码</button>
+  </div>
 
   <div class="flash" id="injectFlash">✓ 已注入</div>
 </body>

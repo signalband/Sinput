@@ -1,14 +1,35 @@
 import { invoke } from "@tauri-apps/api/core";
+import { PAIR_CODE_TTL_MS, MAX_RECONNECT_ATTEMPTS } from "@sinput/shared";
 
 const API_BASE = "https://ws.sinput.jowork.work";
 const WS_BASE = "wss://ws.sinput.jowork.work";
 const PWA_BASE = "https://sinput.jowork.work";
 
+// --- State Machine ---
+//
+//  unpaired ──(phone connects)──→ paired-connected
+//     ↑                               │
+//     │ disconnect                     │ phone disconnects
+//     │                               ↓
+//     └──────────────────────── paired-waiting
+//                                     │
+//                              reconnecting (ws lost)
+//                                     │
+//                              reconnect-failed (5x)
+
+type AppState = "unpaired" | "paired-waiting" | "paired-connected" | "reconnecting" | "reconnect-failed";
+
+let appState: AppState = "unpaired";
 let ws: WebSocket | null = null;
 let roomId = "";
 let pairSecret = "";
 let deviceId = "";
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let codeTimer: ReturnType<typeof setInterval> | null = null;
+let countdownVal = PAIR_CODE_TTL_MS / 1000;
+let reconnectAttempt = 0;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let unpairConfirmTimer: ReturnType<typeof setTimeout> | null = null;
 
 // --- Elements ---
 
@@ -17,55 +38,143 @@ const permBtn = document.getElementById("permBtn")!;
 const statusDot = document.getElementById("statusDot")!;
 const statusText = document.getElementById("statusText")!;
 const lastMsg = document.getElementById("lastMsg")!;
-const qrCard = document.getElementById("qrCard")!;
+const pairingView = document.getElementById("pairingView")!;
+const connectedView = document.getElementById("connectedView")!;
+const failedView = document.getElementById("failedView")!;
+const repairSection = document.getElementById("repairSection")!;
 const qrContainer = document.getElementById("qrContainer")!;
-const repairBtn = document.getElementById("repairBtn")!;
+const pairCodeEl = document.getElementById("pairCode")!;
+const countdownEl = document.getElementById("countdown")!;
 const disconnectBtn = document.getElementById("disconnectBtn")!;
+const repairBtn = document.getElementById("repairBtn")!;
+const retryBtn = document.getElementById("retryBtn")!;
 const injectFlash = document.getElementById("injectFlash")!;
 
-// --- Permission: inline banner, not blocking ---
+// --- Render: single function maps state → UI ---
+
+function render() {
+  // Status indicator
+  switch (appState) {
+    case "unpaired":
+      statusDot.className = "dot off";
+      statusText.textContent = "未连接";
+      break;
+    case "paired-waiting":
+      statusDot.className = "dot wait";
+      statusText.textContent = "等待手机连接...";
+      break;
+    case "paired-connected":
+      statusDot.className = "dot on";
+      statusText.textContent = "已连接";
+      break;
+    case "reconnecting":
+      statusDot.className = "dot wait";
+      statusText.textContent = "重新连接中...";
+      break;
+    case "reconnect-failed":
+      statusDot.className = "dot off";
+      statusText.textContent = "连接失败";
+      break;
+  }
+
+  // View visibility
+  const showPairing = appState === "unpaired" || appState === "paired-waiting";
+  const showConnected = appState === "paired-connected";
+  const showFailed = appState === "reconnect-failed";
+
+  pairingView.classList.toggle("active", showPairing);
+  connectedView.classList.toggle("active", showConnected);
+  failedView.classList.toggle("active", showFailed);
+  repairSection.style.display = showPairing ? "block" : "none";
+
+  // Last message only when connected
+  lastMsg.style.display = showConnected ? "block" : "none";
+
+  // Tray
+  invoke("update_tray_status", { connected: showConnected });
+}
+
+function setState(newState: AppState) {
+  appState = newState;
+  render();
+}
+
+// --- Permission ---
 
 permBtn.addEventListener("click", () => invoke("open_accessibility_settings"));
 
 async function checkPerm(): Promise<boolean> {
-  try {
-    return await invoke<boolean>("check_accessibility");
-  } catch {
-    return false;
-  }
+  try { return await invoke<boolean>("check_accessibility"); }
+  catch { return false; }
 }
 
 async function updatePermBanner() {
-  const granted = await checkPerm();
-  permBanner.style.display = granted ? "none" : "block";
+  permBanner.style.display = (await checkPerm()) ? "none" : "block";
 }
 
-// --- Status ---
-
-function setStatus(state: "connected" | "waiting" | "disconnected", text: string) {
-  statusDot.className = state === "connected" ? "dot on" : state === "waiting" ? "dot wait" : "dot off";
-  statusText.textContent = text;
-  qrCard.style.display = state === "connected" ? "none" : "block";
-  lastMsg.style.display = state === "connected" ? "block" : "none";
-  disconnectBtn.style.display = state === "connected" ? "block" : "none";
-  invoke("update_tray_status", { connected: state === "connected" });
-}
+// --- Inject flash ---
 
 function flashInject() {
   injectFlash.classList.add("show");
   setTimeout(() => injectFlash.classList.remove("show"), 600);
 }
 
+// --- QR ---
+
 function renderQR(url: string) {
   const src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}&bgcolor=ffffff&color=000000&format=svg`;
   qrContainer.innerHTML = `<img src="${src}" alt="QR">`;
 }
 
+// --- Pair Code with fade transition ---
+
+async function registerPairCode() {
+  try {
+    const res = await fetch(`${API_BASE}/api/pair-code/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ roomId, pairSecret }),
+    });
+    const data = await res.json();
+    if (data.code) {
+      // Fade out → update → fade in
+      pairCodeEl.style.opacity = "0";
+      setTimeout(() => {
+        pairCodeEl.textContent = data.code;
+        pairCodeEl.style.opacity = "1";
+      }, 200);
+    }
+  } catch {
+    pairCodeEl.textContent = "------";
+  }
+}
+
+function startCodeRefresh() {
+  stopCodeRefresh();
+  countdownVal = PAIR_CODE_TTL_MS / 1000;
+  countdownEl.textContent = String(countdownVal);
+  registerPairCode();
+
+  codeTimer = setInterval(() => {
+    countdownVal--;
+    if (countdownVal <= 0) {
+      countdownVal = PAIR_CODE_TTL_MS / 1000;
+      registerPairCode();
+    }
+    countdownEl.textContent = String(countdownVal);
+  }, 1000);
+}
+
+function stopCodeRefresh() {
+  if (codeTimer) { clearInterval(codeTimer); codeTimer = null; }
+  pairCodeEl.textContent = "------";
+}
+
 // --- Room ---
 
 async function createRoom() {
-  setStatus("disconnected", "未连接");
-  qrContainer.innerHTML = '<span style="color:#999;font-size:12px">生成中...</span>';
+  setState("unpaired");
+  qrContainer.innerHTML = `<span style="color:var(--text2);font-size:12px">生成中...</span>`;
   try {
     const r = await invoke<{
       room_id: string; token: string; pair_secret: string; device_id: string;
@@ -74,15 +183,15 @@ async function createRoom() {
     pairSecret = r.pair_secret;
     deviceId = r.device_id;
     renderQR(`${PWA_BASE}/?room=${roomId}&secret=${pairSecret}`);
+    startCodeRefresh();
     connectWS();
   } catch {
-    qrContainer.innerHTML = '<span style="color:#FF3B30;font-size:12px">生成失败，重试中...</span>';
+    qrContainer.innerHTML = `<span style="color:var(--red);font-size:12px">生成失败，重试中...</span>`;
     setTimeout(createRoom, 3000);
   }
 }
 
-let reconnectAttempt = 0;
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+// --- WebSocket ---
 
 function cleanupWS() {
   stopHeartbeat();
@@ -104,7 +213,7 @@ function connectWS() {
   socket.onopen = () => {
     if (ws !== socket) return;
     socket.send(JSON.stringify({ type: "auth", pairSecret, deviceId, role: "desktop" }));
-    setStatus("waiting", "等待手机扫码...");
+    setState("paired-waiting");
     reconnectAttempt = 0;
     startHeartbeat();
   };
@@ -116,10 +225,12 @@ function connectWS() {
     switch (msg.type) {
       case "status":
         if (msg.phoneOnline) {
-          setStatus("connected", "已连接");
+          setState("paired-connected");
+          stopCodeRefresh();
           updatePermBanner();
         } else {
-          setStatus("waiting", "等待手机连接...");
+          setState("paired-waiting");
+          if (roomId && pairSecret) startCodeRefresh();
         }
         break;
       case "text":
@@ -142,15 +253,25 @@ function connectWS() {
     if (ws !== socket) return;
     ws = null;
     stopHeartbeat();
-    if (e.code >= 4001 && e.code <= 4004) return;
-    // Exponential backoff: 2s, 3s, 4.5s, ... max 15s
-    const delay = Math.min(2000 * Math.pow(1.5, reconnectAttempt), 15000);
-    reconnectAttempt++;
-    if (reconnectTimer) clearTimeout(reconnectTimer);
-    reconnectTimer = setTimeout(() => { reconnectTimer = null; if (roomId) connectWS(); }, delay);
+    if (e.code >= 4001 && e.code <= 4007) return;
+    scheduleReconnect();
   };
 
   socket.onerror = () => {};
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  reconnectAttempt++;
+
+  if (reconnectAttempt > MAX_RECONNECT_ATTEMPTS) {
+    setState("reconnect-failed");
+    return;
+  }
+
+  setState("reconnecting");
+  const delay = Math.min(2000 * Math.pow(1.5, reconnectAttempt - 1), 15000);
+  reconnectTimer = setTimeout(() => { reconnectTimer = null; connectWS(); }, delay);
 }
 
 function startHeartbeat() {
@@ -166,12 +287,37 @@ function stopHeartbeat() {
 
 // --- Actions ---
 
+// Double-click confirm for disconnect
 disconnectBtn.addEventListener("click", () => {
-  cleanupWS();
-  roomId = "";
-  invoke("clear_pairing");
-  setStatus("disconnected", "未连接");
-  createRoom();
+  if (unpairConfirmTimer) {
+    // Second click — execute disconnect
+    clearTimeout(unpairConfirmTimer);
+    unpairConfirmTimer = null;
+    disconnectBtn.textContent = "断开连接";
+    disconnectBtn.classList.remove("confirm");
+    cleanupWS();
+    roomId = "";
+    invoke("clear_pairing");
+    createRoom();
+    return;
+  }
+  // First click — show confirmation
+  disconnectBtn.textContent = "确认断开?";
+  disconnectBtn.classList.add("confirm");
+  unpairConfirmTimer = setTimeout(() => {
+    unpairConfirmTimer = null;
+    disconnectBtn.textContent = "断开连接";
+    disconnectBtn.classList.remove("confirm");
+  }, 2000);
+});
+
+retryBtn.addEventListener("click", () => {
+  reconnectAttempt = 0;
+  if (roomId) {
+    connectWS();
+  } else {
+    createRoom();
+  }
 });
 
 repairBtn.addEventListener("click", () => {
@@ -183,32 +329,26 @@ repairBtn.addEventListener("click", () => {
 // --- Init ---
 
 async function init() {
-  // Check permission — show/hide banner (non-blocking)
   await updatePermBanner();
 
-  // Check saved pairing
   const saved = await invoke<{ room_id: string; pair_secret: string; device_id: string } | null>("get_saved_pairing");
 
   if (saved?.room_id) {
-    // Has pairing → background reconnect, don't show window
     roomId = saved.room_id;
     pairSecret = saved.pair_secret;
     deviceId = saved.device_id;
     renderQR(`${PWA_BASE}/?room=${roomId}&secret=${pairSecret}`);
-    setStatus("waiting", "重连中...");
+    setState("paired-waiting");
     connectWS();
   } else {
-    // No pairing → show window
     await invoke("show_window");
     createRoom();
   }
 }
 
-// --- Entry ---
-
 window.addEventListener("DOMContentLoaded", () => {
   setTimeout(() => init().catch(console.error), 300);
 });
 
-// Silently poll permission in background (no focus stealing, just hides the banner)
+// Poll permission in background
 setInterval(() => updatePermBanner(), 3000);

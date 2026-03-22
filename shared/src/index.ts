@@ -65,3 +65,5 @@ export const HEARTBEAT_TIMEOUT_MS = 120_000;
 export const ROOM_DESTROY_TIMEOUT_MS = 600_000;
 export const TOKEN_EXPIRY_MS = 300_000;
 export const CLIPBOARD_RESTORE_DELAY_MS = 150;
+export const PAIR_CODE_TTL_MS = 30_000;
+export const MAX_RECONNECT_ATTEMPTS = 5;

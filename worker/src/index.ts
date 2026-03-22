@@ -1,16 +1,17 @@
 import type { CreateRoomResponse } from "@sinput/shared";
 
 export { SinputRoom } from "./room";
+export { PairCodeRegistry } from "./pair-code";
 
 interface Env {
   SINPUT_ROOM: DurableObjectNamespace;
+  PAIR_CODE: DurableObjectNamespace;
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
-    // CORS headers
     const corsHeaders: Record<string, string> = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -32,6 +33,42 @@ export default {
       const data = (await res.json()) as { token: string; pairSecret: string; expiresAt: number };
       const body: CreateRoomResponse = { roomId, ...data };
       return new Response(JSON.stringify(body), {
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    // POST /api/pair-code/register — desktop registers a short code
+    if (url.pathname === "/api/pair-code/register" && request.method === "POST") {
+      const registryId = env.PAIR_CODE.idFromName("global");
+      const stub = env.PAIR_CODE.get(registryId);
+      const res = await stub.fetch(
+        new Request("https://internal/register", {
+          method: "POST",
+          body: await request.text(),
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+      const data = await res.text();
+      return new Response(data, {
+        status: res.status,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    // POST /api/pair-code/lookup — phone looks up a short code
+    if (url.pathname === "/api/pair-code/lookup" && request.method === "POST") {
+      const registryId = env.PAIR_CODE.idFromName("global");
+      const stub = env.PAIR_CODE.get(registryId);
+      const res = await stub.fetch(
+        new Request("https://internal/lookup", {
+          method: "POST",
+          body: await request.text(),
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+      const data = await res.text();
+      return new Response(data, {
+        status: res.status,
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }

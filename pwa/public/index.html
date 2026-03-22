@@ -25,9 +25,7 @@
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-
   html { height: 100%; overflow: hidden; }
-
   body {
     height: 100%;
     font-family: system-ui, -apple-system, sans-serif;
@@ -76,12 +74,12 @@
 
   /* Ack */
   .ack {
-    text-align: center; font-size: 13px; color: var(--green);
+    text-align: center; font-size: 13px; color: var(--green-aa);
     height: 20px; opacity: 0; transition: opacity 0.2s; flex-shrink: 0;
   }
   .ack.visible { opacity: 1; }
 
-  /* Textarea — compact, auto-grow */
+  /* Textarea */
   .input-area {
     flex: 1; min-height: 0; margin: 4px 0;
     overflow-y: auto;
@@ -107,7 +105,7 @@
   #textInput:focus { border-color: var(--green); }
   #textInput::placeholder { color: var(--text2); }
 
-  /* Send button — large, sticky at bottom */
+  /* Send button */
   .bottom-bar {
     flex-shrink: 0;
     padding: 8px 0;
@@ -130,7 +128,15 @@
   #sendBtn:active { background: var(--green-aa); }
   #sendBtn:disabled { opacity: 0.4; }
 
-  /* A2HS guide — smart per-browser */
+  /* Unpair button — proper touch target */
+  #unpairBtn {
+    background: none; border: none; color: var(--text2);
+    font-size: 13px; padding: 14px 8px; cursor: pointer;
+    width: 100%; text-align: center; min-height: 48px;
+  }
+  #unpairBtn.confirm { color: var(--red); font-weight: 600; }
+
+  /* A2HS guide */
   .a2hs-overlay {
     display: none;
     position: fixed; inset: 0; z-index: 20;
@@ -147,14 +153,25 @@
   .a2hs-steps { font-size: 14px; color: var(--text2); line-height: 2; text-align: left; }
   .a2hs-steps b { color: var(--text); }
   .a2hs-btn {
-    padding: 12px 32px; border-radius: 10px; border: none;
+    padding: 12px 32px; border-radius: 12px; border: none;
     font-size: 15px; font-weight: 600; cursor: pointer;
-    background: var(--green); color: #fff;
+    background: var(--green); color: #fff; min-height: 48px;
   }
   .a2hs-later {
     font-size: 13px; color: var(--text2); background: none;
     border: none; cursor: pointer; text-decoration: underline;
+    padding: 12px; min-height: 48px;
   }
+
+  /* Pair overlay — independent from error overlay */
+  .pair-overlay {
+    display: none; position: fixed; inset: 0; background: var(--bg); z-index: 10;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; padding: 32px;
+  }
+  .pair-overlay.show { display: flex; }
+  .pair-title { font-size: 18px; font-weight: 600; }
+  .pair-msg { font-size: 14px; color: var(--text2); text-align: center; }
 
   /* Error overlay */
   .error-overlay {
@@ -163,17 +180,18 @@
     gap: 16px; padding: 32px;
   }
   .error-overlay.show { display: flex; }
-  .error-title { font-size: 18px; font-weight: 600; }
+  .error-title { font-size: 18px; font-weight: 600; color: var(--red); }
   .error-msg { font-size: 14px; color: var(--text2); text-align: center; }
   .error-retry {
-    padding: 12px 24px; background: var(--green); color: #fff;
-    border: none; border-radius: 12px; font-size: 14px; font-weight: 500; cursor: pointer;
+    padding: 14px 24px; background: var(--green); color: #fff;
+    border: none; border-radius: 12px; font-size: 14px; font-weight: 500;
+    cursor: pointer; min-height: 48px;
   }
 </style>
 </head>
 <body>
   <div class="app">
-    <div class="status" aria-live="polite">
+    <div class="status" aria-live="polite" role="status">
       <div class="status-dot connecting" id="statusDot"></div>
       <span class="status-text connecting" id="statusText">连接中...</span>
     </div>
@@ -186,7 +204,7 @@
 
     <div class="bottom-bar">
       <button id="sendBtn" disabled>发送</button>
-      <button id="unpairBtn" style="display:none;background:none;border:none;color:#98989D;font-size:12px;padding:8px;cursor:pointer;width:100%;text-align:center">断开配对</button>
+      <button id="unpairBtn" style="display:none">断开配对</button>
     </div>
   </div>
 
@@ -198,23 +216,56 @@
     <button class="a2hs-later" id="a2hsLater">以后再说</button>
   </div>
 
+  <!-- Pair code input overlay — separate from error -->
+  <div class="pair-overlay" id="pairOverlay">
+    <div class="pair-title">连接到电脑</div>
+    <div class="pair-msg">输入电脑端显示的 6 位配对码</div>
+    <input id="codeInput" type="tel" maxlength="6" pattern="[0-9]*" inputmode="numeric"
+      style="font-size:32px;text-align:center;letter-spacing:8px;width:200px;padding:12px;
+      border:2px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);
+      outline:none;font-variant-numeric:tabular-nums" placeholder="000000">
+    <div id="codeError" style="color:var(--red);font-size:13px;min-height:20px"></div>
+    <button id="codeSubmit" style="padding:14px 48px;background:var(--green);color:#fff;border:none;
+      border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;min-width:200px;min-height:48px">配对</button>
+  </div>
+
+  <!-- Error / reconnect-failed overlay -->
   <div class="error-overlay" id="errorOverlay">
     <div class="error-title" id="errorTitle">连接失败</div>
     <div class="error-msg" id="errorMsg"></div>
-    <button class="error-retry" onclick="retryConnection()">重试</button>
+    <button class="error-retry" id="errorRetryBtn">重试</button>
   </div>
 
 <script>
+// --- Constants ---
+const MAX_RECONNECT = 5;
 const API_BASE = location.hostname === "localhost"
   ? "ws://localhost:8787"
   : "wss://ws.sinput.jowork.work";
+const HTTP_BASE = location.hostname === "localhost"
+  ? "http://localhost:8787"
+  : "https://ws.sinput.jowork.work";
 
+// --- State Machine ---
+//
+//  unpaired ──(pair success)──→ paired-connected
+//     ↑                              │
+//     │ unpair                       │ desktop offline
+//     │                              ↓
+//     └────────────────────── paired-waiting
+//                                    │
+//                             reconnecting (ws lost)
+//                                    │
+//                             reconnect-failed (5x)
+
+let appState = "unpaired"; // unpaired | paired-connected | paired-waiting | reconnecting | reconnect-failed
 let ws = null;
 let desktopOnline = false;
 let isFirstSend = !localStorage.getItem("sinput_first_send_done");
 let heartbeatTimer = null;
 let reconnectTimer = null;
 let reconnectAttempt = 0;
+let unpairConfirmTimer = null;
 
 const params = new URLSearchParams(location.search);
 let roomId = params.get("room");
@@ -230,14 +281,131 @@ if (roomId && pairSecret) {
   pairSecret = localStorage.getItem("sinput_pair_secret");
 }
 
+// --- Elements ---
 const statusDot = document.getElementById("statusDot");
 const statusText = document.getElementById("statusText");
 const ackEl = document.getElementById("ack");
 const textInput = document.getElementById("textInput");
 const sendBtn = document.getElementById("sendBtn");
+const unpairBtn = document.getElementById("unpairBtn");
+const pairOverlay = document.getElementById("pairOverlay");
+const errorOverlay = document.getElementById("errorOverlay");
+
+// --- Render ---
+
+function render() {
+  switch (appState) {
+    case "unpaired":
+      setStatusUI("disconnected", "未连接");
+      sendBtn.disabled = true;
+      unpairBtn.style.display = "none";
+      break;
+    case "paired-connected":
+      setStatusUI("connected", "已连接到电脑");
+      sendBtn.disabled = false;
+      unpairBtn.style.display = "block";
+      break;
+    case "paired-waiting":
+      setStatusUI("disconnected", "等待电脑连接");
+      sendBtn.disabled = true;
+      unpairBtn.style.display = "block";
+      break;
+    case "reconnecting":
+      setStatusUI("connecting", "重新连接中...");
+      sendBtn.disabled = true;
+      unpairBtn.style.display = "block";
+      break;
+    case "reconnect-failed":
+      setStatusUI("disconnected", "连接失败");
+      sendBtn.disabled = true;
+      unpairBtn.style.display = "block";
+      showError("连接失败", "无法连接到服务器，请检查网络后重试");
+      break;
+  }
+}
+
+function setStatusUI(state, text) {
+  statusDot.className = "status-dot " + state;
+  statusText.className = "status-text " + state;
+  statusText.textContent = text;
+}
+
+function setState(newState) {
+  appState = newState;
+  render();
+}
+
+// --- Pair overlay ---
+
+function showPairInput() {
+  pairOverlay.classList.add("show");
+  errorOverlay.classList.remove("show");
+  setTimeout(() => document.getElementById("codeInput").focus(), 100);
+}
+
+function hidePairOverlay() {
+  pairOverlay.classList.remove("show");
+}
 
 if (!roomId || !pairSecret) {
-  showError("未配对", "请从电脑端扫码配对");
+  showPairInput();
+}
+
+document.getElementById("codeSubmit").addEventListener("click", submitCode);
+document.getElementById("codeInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") submitCode();
+});
+
+async function submitCode() {
+  const code = document.getElementById("codeInput").value.trim();
+  const errorEl = document.getElementById("codeError");
+  if (code.length !== 6) { errorEl.textContent = "请输入 6 位数字"; return; }
+
+  errorEl.textContent = "";
+  document.getElementById("codeSubmit").textContent = "配对中...";
+
+  try {
+    const res = await fetch(HTTP_BASE + "/api/pair-code/lookup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      const msgs = { INVALID_CODE: "配对码无效", CODE_EXPIRED: "配对码已过期", TOO_MANY_ATTEMPTS: "尝试次数过多" };
+      errorEl.textContent = msgs[data.error] || "配对失败";
+      document.getElementById("codeSubmit").textContent = "配对";
+      document.getElementById("codeInput").value = "";
+      document.getElementById("codeInput").focus();
+      return;
+    }
+
+    // Success — magic moment: input border turns green briefly
+    const codeInput = document.getElementById("codeInput");
+    codeInput.style.borderColor = "var(--green)";
+    document.getElementById("codeSubmit").textContent = "✓ 已连接";
+    document.getElementById("codeSubmit").style.background = "var(--green)";
+
+    roomId = data.roomId;
+    pairSecret = data.pairSecret;
+    localStorage.setItem("sinput_room_id", roomId);
+    localStorage.setItem("sinput_pair_secret", pairSecret);
+
+    // Brief pause to show success, then transition
+    setTimeout(() => {
+      hidePairOverlay();
+      // Reset submit button for future use
+      document.getElementById("codeSubmit").textContent = "配对";
+      document.getElementById("codeSubmit").style.background = "";
+      codeInput.style.borderColor = "";
+      codeInput.value = "";
+      connect();
+    }, 600);
+  } catch {
+    errorEl.textContent = "网络错误，请重试";
+    document.getElementById("codeSubmit").textContent = "配对";
+  }
 }
 
 // --- WebSocket ---
@@ -246,26 +414,21 @@ function cleanup() {
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   if (ws) {
     ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
-    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-      ws.close();
-    }
+    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
     ws = null;
   }
 }
 
 function connect() {
-  // Prevent duplicate connections
   if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
-
-  // Clean up any stale state
   cleanup();
-  setStatus("connecting", "连接中...");
+  setState("reconnecting");
 
   const socket = new WebSocket(API_BASE + `/api/room/${roomId}/ws`);
   ws = socket;
 
   socket.onopen = () => {
-    if (ws !== socket) return; // Stale socket
+    if (ws !== socket) return;
     socket.send(JSON.stringify({ type: "auth", pairSecret, deviceId, role: "phone" }));
     reconnectAttempt = 0;
     startHeartbeat();
@@ -279,14 +442,10 @@ function connect() {
       case "status":
         desktopOnline = msg.desktopOnline;
         if (desktopOnline) {
-          setStatus("connected", "已连接到电脑");
-          sendBtn.disabled = false;
-          document.getElementById("unpairBtn").style.display = "block";
+          setState("paired-connected");
           showA2HSGuide();
         } else {
-          setStatus("disconnected", "等待电脑连接");
-          sendBtn.disabled = true;
-          document.getElementById("unpairBtn").style.display = "block"; // still show unpair when waiting
+          setState("paired-waiting");
         }
         break;
       case "ack":
@@ -298,7 +457,8 @@ function connect() {
           localStorage.removeItem("sinput_pair_secret");
           roomId = null;
           pairSecret = null;
-          showError("配对已失效", "请从电脑端重新扫码配对");
+          setState("unpaired");
+          showPairInput();
         }
         break;
     }
@@ -308,19 +468,25 @@ function connect() {
     if (ws !== socket) return;
     ws = null;
     stopHeartbeat();
-    if (e.code >= 4001 && e.code <= 4006) return; // Auth failure or room destroyed, don't reconnect
+    if (e.code >= 4001 && e.code <= 4007) return;
     sendBtn.disabled = true;
     scheduleReconnect();
   };
 
-  socket.onerror = () => {}; // onclose handles it
+  socket.onerror = () => {};
 }
 
 function scheduleReconnect() {
   if (reconnectTimer) return;
-  const delay = Math.min(2000 * Math.pow(1.5, reconnectAttempt), 15000);
   reconnectAttempt++;
-  setStatus("connecting", "重新连接中...");
+
+  if (reconnectAttempt > MAX_RECONNECT) {
+    setState("reconnect-failed");
+    return;
+  }
+
+  setState("reconnecting");
+  const delay = Math.min(2000 * Math.pow(1.5, reconnectAttempt - 1), 15000);
   reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, delay);
 }
 
@@ -346,18 +512,34 @@ function send() {
 
 sendBtn.addEventListener("click", send);
 
-// Unpair button
-document.getElementById("unpairBtn").addEventListener("click", () => {
-  cleanup();
-  localStorage.removeItem("sinput_room_id");
-  localStorage.removeItem("sinput_pair_secret");
-  roomId = null;
-  pairSecret = null;
-  desktopOnline = false;
-  sendBtn.disabled = true;
-  document.getElementById("unpairBtn").style.display = "none";
-  showError("未配对", "请从电脑端扫码配对");
+// Double-click confirm unpair
+unpairBtn.addEventListener("click", () => {
+  if (unpairConfirmTimer) {
+    // Second click — execute
+    clearTimeout(unpairConfirmTimer);
+    unpairConfirmTimer = null;
+    unpairBtn.textContent = "断开配对";
+    unpairBtn.classList.remove("confirm");
+    cleanup();
+    localStorage.removeItem("sinput_room_id");
+    localStorage.removeItem("sinput_pair_secret");
+    roomId = null;
+    pairSecret = null;
+    desktopOnline = false;
+    setState("unpaired");
+    showPairInput();
+    return;
+  }
+  // First click — confirm
+  unpairBtn.textContent = "确认断开?";
+  unpairBtn.classList.add("confirm");
+  unpairConfirmTimer = setTimeout(() => {
+    unpairConfirmTimer = null;
+    unpairBtn.textContent = "断开配对";
+    unpairBtn.classList.remove("confirm");
+  }, 2000);
 });
+
 textInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
 });
@@ -368,13 +550,7 @@ textInput.addEventListener("input", () => {
   textInput.style.height = Math.min(textInput.scrollHeight, window.innerHeight * 0.4) + 'px';
 });
 
-// --- UI ---
-function setStatus(state, text) {
-  statusDot.className = "status-dot " + state;
-  statusText.className = "status-text " + state;
-  statusText.textContent = text;
-}
-
+// --- UI helpers ---
 function showAck() {
   if (isFirstSend) {
     ackEl.textContent = "✨ 已到达电脑光标";
@@ -390,16 +566,20 @@ function showAck() {
 function showError(title, msg) {
   document.getElementById("errorTitle").textContent = title;
   document.getElementById("errorMsg").textContent = msg;
-  document.getElementById("errorOverlay").classList.add("show");
-}
-function retryConnection() {
-  document.getElementById("errorOverlay").classList.remove("show");
-  if (!roomId || !pairSecret) return; // nothing to retry
-  reconnectAttempt = 0;
-  connect();
+  errorOverlay.classList.add("show");
 }
 
-// --- A2HS guide — detect browser and show appropriate steps ---
+document.getElementById("errorRetryBtn").addEventListener("click", () => {
+  errorOverlay.classList.remove("show");
+  reconnectAttempt = 0;
+  if (roomId && pairSecret) {
+    connect();
+  } else {
+    showPairInput();
+  }
+});
+
+// --- A2HS ---
 function showA2HSGuide() {
   if (localStorage.getItem("sinput_a2hs_dismissed")) return;
   if (window.matchMedia("(display-mode: standalone)").matches || navigator.standalone) return;
@@ -422,13 +602,13 @@ function showA2HSGuide() {
       <b>2.</b> 选择 <b>「在Safari中打开」</b>或<b>「在浏览器打开」</b><br>
       <b>3.</b> 在 Safari 中点击底部 <b>分享 ↑</b><br>
       <b>4.</b> 选择 <b>「添加到主屏幕」</b><br>
-      <br><span style="color:var(--text2);font-size:12px">从主屏幕打开后将以独立 App 形式运行，无浏览器地址栏</span>
+      <br><span style="color:var(--text2);font-size:12px">从主屏幕打开后将以独立 App 形式运行</span>
     `;
   } else if (isSafari) {
     steps = `
       <b>1.</b> 点击底部 <b>分享</b>按钮 <b>↑</b><br>
       <b>2.</b> 向下滑动，选择 <b>「添加到主屏幕」</b><br>
-      <br><span style="color:var(--text2);font-size:12px">添加后将以独立 App 形式运行，无浏览器地址栏</span>
+      <br><span style="color:var(--text2);font-size:12px">添加后将以独立 App 形式运行</span>
     `;
   } else if (isChromeIOS) {
     steps = `
@@ -446,7 +626,7 @@ function showA2HSGuide() {
     steps = `
       <b>1.</b> 用手机 Safari 或 Chrome 打开此页面<br>
       <b>2.</b> 使用浏览器的「添加到主屏幕」功能<br>
-      <br><span style="color:var(--text2);font-size:12px">添加后将以独立 App 形式运行，无浏览器地址栏</span>
+      <br><span style="color:var(--text2);font-size:12px">添加后将以独立 App 形式运行</span>
     `;
   }
 
@@ -460,13 +640,11 @@ document.getElementById("a2hsOk").addEventListener("click", () => {
 });
 document.getElementById("a2hsLater").addEventListener("click", () => {
   document.getElementById("a2hsOverlay").classList.remove("show");
-  // Don't persist — will show again next time
 });
 
-// --- Reconnect on visibility change ---
+// --- Reconnect on visibility ---
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && roomId && pairSecret) {
-    // Only reconnect if truly disconnected, not if already connecting
     if (!ws || ws.readyState === WebSocket.CLOSED) {
       reconnectAttempt = 0;
       connect();
@@ -474,7 +652,7 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-// --- Keyboard handling: resize app to visual viewport ---
+// --- Keyboard handling ---
 if (window.visualViewport) {
   const app = document.querySelector(".app");
   function onViewportResize() {
@@ -485,7 +663,7 @@ if (window.visualViewport) {
   onViewportResize();
 }
 
-// --- Service Worker (required for Android PWA standalone mode) ---
+// --- Service Worker ---
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
