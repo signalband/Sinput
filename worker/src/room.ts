@@ -104,6 +104,9 @@ export class SinputRoom implements DurableObject {
       case "ping":
         this.handlePing(ws);
         break;
+      case "kick":
+        this.handleKick(ws, (msg as any).targetRole);
+        break;
     }
   }
 
@@ -197,6 +200,21 @@ export class SinputRoom implements DurableObject {
     this.sendTo(desktop.ws, { type: "text", text: msg.text, ts: msg.ts });
     // Ack to phone
     this.sendTo(ws, { type: "ack", ts: msg.ts });
+  }
+
+  private handleKick(ws: WebSocket, targetRole: ClientRole) {
+    const sender = this.clients.get(ws);
+    if (!sender) return;
+    // Only desktop can kick phone
+    if (sender.role !== "desktop" || targetRole !== "phone") return;
+
+    const target = this.getClientByRole(targetRole);
+    if (target) {
+      this.sendTo(target.ws, { type: "error", code: "AUTH_FAILED", message: "Kicked by desktop" });
+      try { target.ws.close(4007, "KICKED"); } catch { /* */ }
+      this.clients.delete(target.ws);
+      this.broadcastStatus();
+    }
   }
 
   private handlePing(ws: WebSocket) {

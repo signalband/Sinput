@@ -4,12 +4,17 @@ compatibility_date = "2025-03-21"
 
 [durable_objects]
 bindings = [
-  { name = "SINPUT_ROOM", class_name = "SinputRoom" }
+  { name = "SINPUT_ROOM", class_name = "SinputRoom" },
+  { name = "PAIR_CODE", class_name = "PairCodeRegistry" }
 ]
 
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SinputRoom"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["PairCodeRegistry"]
 
 [vars]
 ENVIRONMENT = "production"
