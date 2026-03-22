@@ -7,6 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0A0A0A">
 <link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>Sinput</title>
 <style>
   :root {
@@ -22,39 +23,27 @@
     --text2: #A3A3A3;
     --border: #262626;
   }
-  [data-theme="light"] {
-    --bg: #FAFAFA;
-    --surface: #FFFFFF;
-    --text: #171717;
-    --text2: #737373;
-    --border: #E5E5E5;
-  }
 
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
-  html, body {
-    height: 100%;
-    overflow: hidden;
-    touch-action: manipulation;
-  }
+  html { height: 100%; overflow: hidden; }
 
   body {
+    height: 100%;
     font-family: system-ui, -apple-system, sans-serif;
     background: var(--bg);
     color: var(--text);
     display: flex;
     flex-direction: column;
+    touch-action: manipulation;
   }
 
   .app {
-    flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 16px;
-    padding-top: env(safe-area-inset-top, 16px);
-    padding-bottom: env(safe-area-inset-bottom, 16px);
-    max-height: 100vh;
-    max-height: 100dvh;
+    height: 100%;
+    padding: 8px 16px;
+    padding-top: env(safe-area-inset-top, 8px);
   }
 
   /* Status bar */
@@ -63,28 +52,19 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    padding: 8px 0;
+    padding: 6px 0;
     font-size: 13px;
     font-weight: 500;
     flex-shrink: 0;
   }
 
   .status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    transition: background 0.3s;
+    width: 8px; height: 8px; border-radius: 50%;
   }
-
-  .status-dot.connected {
-    background: var(--green);
-    animation: pulse 2s ease-in-out infinite;
-  }
-
+  .status-dot.connected { background: var(--green); animation: pulse 2s ease-in-out infinite; }
   .status-dot.disconnected { background: var(--red); }
   .status-dot.connecting { background: var(--amber); animation: pulse 1s ease-in-out infinite; }
 
-  .status-text { transition: color 0.3s; }
   .status-text.connected { color: var(--green); }
   .status-text.disconnected { color: var(--red); }
   .status-text.connecting { color: var(--amber); }
@@ -94,137 +74,100 @@
     50% { opacity: 0.5; transform: scale(0.9); }
   }
 
-  /* Ack feedback */
+  /* Ack */
   .ack {
-    text-align: center;
-    font-size: 13px;
-    color: var(--green);
-    height: 20px;
-    opacity: 0;
-    transition: opacity 0.2s;
-    flex-shrink: 0;
+    text-align: center; font-size: 13px; color: var(--green);
+    height: 20px; opacity: 0; transition: opacity 0.2s; flex-shrink: 0;
   }
   .ack.visible { opacity: 1; }
-  .ack.magic { font-size: 14px; }
 
-  /* Textarea */
+  /* Textarea — compact, auto-grow */
   .input-area {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    margin: 8px 0;
+    flex: 1; min-height: 0; margin: 4px 0;
+    overflow-y: auto;
   }
 
   #textInput {
-    flex: 1;
     width: 100%;
-    padding: 16px;
+    min-height: 80px;
+    max-height: 40vh;
+    padding: 10px 14px;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 12px;
     color: var(--text);
     font-family: system-ui, -apple-system, sans-serif;
     font-size: 16px;
-    line-height: 1.6;
+    line-height: 1.5;
     resize: none;
     outline: none;
-    transition: border-color 0.15s;
     -webkit-appearance: none;
+    overflow-y: hidden;
   }
-
   #textInput:focus { border-color: var(--green); }
   #textInput::placeholder { color: var(--text2); }
 
-  /* Bottom */
-  .bottom {
+  /* Send button — large, sticky at bottom */
+  .bottom-bar {
     flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    padding: 8px 0;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
   }
 
   #sendBtn {
     width: 100%;
-    padding: 14px;
+    padding: 16px;
     background: var(--green);
     color: #fff;
     border: none;
-    border-radius: 12px;
+    border-radius: 14px;
     font-family: system-ui;
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s, opacity 0.15s;
-    min-height: 48px;
+    min-height: 56px;
   }
-
   #sendBtn:active { background: var(--green-aa); }
-  #sendBtn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
+  #sendBtn:disabled { opacity: 0.4; }
 
-  .hint {
-    text-align: center;
-    font-size: 11px;
-    color: var(--text2);
-  }
-
-  /* A2HS banner */
-  .a2hs {
+  /* A2HS guide — smart per-browser */
+  .a2hs-overlay {
     display: none;
-    padding: 12px 16px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    margin-bottom: 8px;
-    flex-shrink: 0;
-  }
-
-  .a2hs.show { display: block; }
-
-  .a2hs-text {
-    font-size: 12px;
-    color: var(--text2);
-    line-height: 1.6;
-    margin-bottom: 8px;
-  }
-
-  .a2hs-dismiss {
-    font-size: 11px;
-    color: var(--text2);
-    background: none;
-    border: none;
-    cursor: pointer;
-    text-decoration: underline;
-  }
-
-  /* Error overlay */
-  .error-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: var(--bg);
-    z-index: 10;
+    position: fixed; inset: 0; z-index: 20;
+    background: rgba(0,0,0,0.85);
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 16px;
     padding: 32px;
+    text-align: center;
+  }
+  .a2hs-overlay.show { display: flex; }
+  .a2hs-title { font-size: 20px; font-weight: 600; }
+  .a2hs-steps { font-size: 14px; color: var(--text2); line-height: 2; text-align: left; }
+  .a2hs-steps b { color: var(--text); }
+  .a2hs-btn {
+    padding: 12px 32px; border-radius: 10px; border: none;
+    font-size: 15px; font-weight: 600; cursor: pointer;
+    background: var(--green); color: #fff;
+  }
+  .a2hs-later {
+    font-size: 13px; color: var(--text2); background: none;
+    border: none; cursor: pointer; text-decoration: underline;
+  }
+
+  /* Error overlay */
+  .error-overlay {
+    display: none; position: fixed; inset: 0; background: var(--bg); z-index: 10;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; padding: 32px;
   }
   .error-overlay.show { display: flex; }
   .error-title { font-size: 18px; font-weight: 600; }
   .error-msg { font-size: 14px; color: var(--text2); text-align: center; }
   .error-retry {
-    padding: 12px 24px;
-    background: var(--green);
-    color: #fff;
-    border: none;
-    border-radius: 12px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
+    padding: 12px 24px; background: var(--green); color: #fff;
+    border: none; border-radius: 12px; font-size: 14px; font-weight: 500; cursor: pointer;
   }
 </style>
 </head>
@@ -238,260 +181,319 @@
     <div class="ack" id="ack" role="status"></div>
 
     <div class="input-area">
-      <textarea id="textInput" placeholder="拿起手机，说..." autofocus></textarea>
+      <textarea id="textInput" placeholder="拿起手机，说..." inputmode="text" enterkeyhint="send"></textarea>
     </div>
 
-    <div class="bottom">
-      <div class="a2hs" id="a2hs">
-        <div class="a2hs-text">
-          添加到主屏幕，下次直接点图标打开：<br>
-          点击底部 <strong>分享按钮 ↑</strong> → 选择 <strong>"添加到主屏幕"</strong>
-        </div>
-        <button class="a2hs-dismiss" onclick="dismissA2hs()">知道了</button>
-      </div>
+    <div class="bottom-bar">
       <button id="sendBtn" disabled>发送</button>
-      <div class="hint">使用任意输入法语音输入</div>
+      <button id="unpairBtn" style="display:none;background:none;border:none;color:#98989D;font-size:12px;padding:8px;cursor:pointer;width:100%;text-align:center">断开配对</button>
     </div>
+  </div>
+
+  <!-- A2HS guide overlay -->
+  <div class="a2hs-overlay" id="a2hsOverlay">
+    <div class="a2hs-title">添加到主屏幕</div>
+    <div class="a2hs-steps" id="a2hsSteps"></div>
+    <button class="a2hs-btn" id="a2hsOk">我知道了</button>
+    <button class="a2hs-later" id="a2hsLater">以后再说</button>
   </div>
 
   <div class="error-overlay" id="errorOverlay">
     <div class="error-title" id="errorTitle">连接失败</div>
     <div class="error-msg" id="errorMsg"></div>
-    <button class="error-retry" onclick="location.reload()">重试</button>
+    <button class="error-retry" onclick="retryConnection()">重试</button>
   </div>
 
 <script>
-// --- Config ---
 const API_BASE = location.hostname === "localhost"
   ? "ws://localhost:8787"
   : "wss://ws.sinput.jowork.work";
 
-// --- State ---
 let ws = null;
 let desktopOnline = false;
-let isFirstSend = true;
+let isFirstSend = !localStorage.getItem("sinput_first_send_done");
 let heartbeatTimer = null;
 let reconnectTimer = null;
 let reconnectAttempt = 0;
-const MAX_RECONNECT_DELAY = 10000;
 
-// Parse room info from URL
 const params = new URLSearchParams(location.search);
-const roomId = params.get("room");
-const pairSecret = params.get("secret");
+let roomId = params.get("room");
+let pairSecret = params.get("secret");
 const deviceId = localStorage.getItem("sinput_device_id") || crypto.randomUUID();
 localStorage.setItem("sinput_device_id", deviceId);
 
-// --- Elements ---
+if (roomId && pairSecret) {
+  localStorage.setItem("sinput_room_id", roomId);
+  localStorage.setItem("sinput_pair_secret", pairSecret);
+} else {
+  roomId = localStorage.getItem("sinput_room_id");
+  pairSecret = localStorage.getItem("sinput_pair_secret");
+}
+
 const statusDot = document.getElementById("statusDot");
 const statusText = document.getElementById("statusText");
 const ackEl = document.getElementById("ack");
 const textInput = document.getElementById("textInput");
 const sendBtn = document.getElementById("sendBtn");
-const errorOverlay = document.getElementById("errorOverlay");
-const errorTitle = document.getElementById("errorTitle");
-const errorMsg = document.getElementById("errorMsg");
-const a2hsEl = document.getElementById("a2hs");
 
-// --- Validate ---
 if (!roomId || !pairSecret) {
-  showError("无效链接", "请从电脑端重新扫码配对");
+  showError("未配对", "请从电脑端扫码配对");
 }
 
-// --- Connect ---
+// --- WebSocket ---
+function cleanup() {
+  stopHeartbeat();
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  if (ws) {
+    ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
+    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+      ws.close();
+    }
+    ws = null;
+  }
+}
+
 function connect() {
+  // Prevent duplicate connections
   if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
 
+  // Clean up any stale state
+  cleanup();
   setStatus("connecting", "连接中...");
 
-  const wsUrl = API_BASE.replace(/^http/, "ws") + `/api/room/${roomId}/ws`;
-  ws = new WebSocket(wsUrl);
+  const socket = new WebSocket(API_BASE + `/api/room/${roomId}/ws`);
+  ws = socket;
 
-  ws.onopen = () => {
-    ws.send(JSON.stringify({
-      type: "auth",
-      pairSecret,
-      deviceId,
-      role: "phone",
-    }));
+  socket.onopen = () => {
+    if (ws !== socket) return; // Stale socket
+    socket.send(JSON.stringify({ type: "auth", pairSecret, deviceId, role: "phone" }));
     reconnectAttempt = 0;
     startHeartbeat();
   };
 
-  ws.onmessage = (e) => {
+  socket.onmessage = (e) => {
+    if (ws !== socket) return;
     let msg;
     try { msg = JSON.parse(e.data); } catch { return; }
-
     switch (msg.type) {
       case "status":
         desktopOnline = msg.desktopOnline;
         if (desktopOnline) {
-          setStatus("connected", "已连接");
+          setStatus("connected", "已连接到电脑");
           sendBtn.disabled = false;
-          checkA2HS();
+          document.getElementById("unpairBtn").style.display = "block";
+          showA2HSGuide();
         } else {
           setStatus("disconnected", "等待电脑连接");
           sendBtn.disabled = true;
+          document.getElementById("unpairBtn").style.display = "block"; // still show unpair when waiting
         }
         break;
-
       case "ack":
         showAck();
         break;
-
-      case "pong":
-        break;
-
       case "error":
-        if (msg.code === "AUTH_FAILED" || msg.code === "TOKEN_EXPIRED" || msg.code === "TOKEN_CONSUMED") {
-          showError("配对失败", msg.message + "\n请从电脑端重新扫码");
+        if (["AUTH_FAILED","TOKEN_EXPIRED","TOKEN_CONSUMED","ROOM_DESTROYED"].includes(msg.code)) {
+          localStorage.removeItem("sinput_room_id");
+          localStorage.removeItem("sinput_pair_secret");
+          roomId = null;
+          pairSecret = null;
+          showError("配对已失效", "请从电脑端重新扫码配对");
         }
         break;
     }
   };
 
-  ws.onclose = (e) => {
+  socket.onclose = (e) => {
+    if (ws !== socket) return;
+    ws = null;
     stopHeartbeat();
-    if (e.code >= 4001 && e.code <= 4004) return; // Auth failure, don't reconnect
-    setStatus("disconnected", "已断开");
+    if (e.code >= 4001 && e.code <= 4006) return; // Auth failure or room destroyed, don't reconnect
     sendBtn.disabled = true;
     scheduleReconnect();
   };
 
-  ws.onerror = () => {
-    // onclose will fire after this
-  };
+  socket.onerror = () => {}; // onclose handles it
 }
 
 function scheduleReconnect() {
   if (reconnectTimer) return;
-  const delay = Math.min(1000 * Math.pow(2, reconnectAttempt), MAX_RECONNECT_DELAY);
+  const delay = Math.min(2000 * Math.pow(1.5, reconnectAttempt), 15000);
   reconnectAttempt++;
   setStatus("connecting", "重新连接中...");
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    connect();
-  }, delay);
+  reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, delay);
 }
 
-// --- Heartbeat ---
 function startHeartbeat() {
   stopHeartbeat();
   heartbeatTimer = setInterval(() => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "ping" }));
-    }
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "ping" }));
   }, 30000);
 }
-
 function stopHeartbeat() {
-  if (heartbeatTimer) {
-    clearInterval(heartbeatTimer);
-    heartbeatTimer = null;
-  }
+  if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
 }
 
 // --- Send ---
 function send() {
   const text = textInput.value.trim();
   if (!text || !ws || ws.readyState !== WebSocket.OPEN || !desktopOnline) return;
-
-  ws.send(JSON.stringify({
-    type: "text",
-    text,
-    ts: Date.now(),
-  }));
-
+  ws.send(JSON.stringify({ type: "text", text, ts: Date.now() }));
   textInput.value = "";
+  textInput.style.height = 'auto';
   textInput.focus();
 }
 
 sendBtn.addEventListener("click", send);
 
-// Enter to send (but allow Shift+Enter for newline)
+// Unpair button
+document.getElementById("unpairBtn").addEventListener("click", () => {
+  cleanup();
+  localStorage.removeItem("sinput_room_id");
+  localStorage.removeItem("sinput_pair_secret");
+  roomId = null;
+  pairSecret = null;
+  desktopOnline = false;
+  sendBtn.disabled = true;
+  document.getElementById("unpairBtn").style.display = "none";
+  showError("未配对", "请从电脑端扫码配对");
+});
 textInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    send();
-  }
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
 });
 
-// --- Status UI ---
+// Auto-grow
+textInput.addEventListener("input", () => {
+  textInput.style.height = 'auto';
+  textInput.style.height = Math.min(textInput.scrollHeight, window.innerHeight * 0.4) + 'px';
+});
+
+// --- UI ---
 function setStatus(state, text) {
   statusDot.className = "status-dot " + state;
   statusText.className = "status-text " + state;
   statusText.textContent = text;
 }
 
-// --- Ack feedback ---
 function showAck() {
   if (isFirstSend) {
     ackEl.textContent = "✨ 已到达电脑光标";
-    ackEl.classList.add("magic");
     isFirstSend = false;
     localStorage.setItem("sinput_first_send_done", "1");
   } else {
     ackEl.textContent = "✓";
-    ackEl.classList.remove("magic");
   }
   ackEl.classList.add("visible");
-  setTimeout(() => ackEl.classList.remove("visible"), isFirstSend ? 1500 : 800);
+  setTimeout(() => ackEl.classList.remove("visible"), 800);
 }
 
-// Restore first-send state
-if (localStorage.getItem("sinput_first_send_done")) {
-  isFirstSend = false;
-}
-
-// --- Error ---
 function showError(title, msg) {
-  errorTitle.textContent = title;
-  errorMsg.textContent = msg;
-  errorOverlay.classList.add("show");
+  document.getElementById("errorTitle").textContent = title;
+  document.getElementById("errorMsg").textContent = msg;
+  document.getElementById("errorOverlay").classList.add("show");
+}
+function retryConnection() {
+  document.getElementById("errorOverlay").classList.remove("show");
+  if (!roomId || !pairSecret) return; // nothing to retry
+  reconnectAttempt = 0;
+  connect();
 }
 
-// --- A2HS ---
-function checkA2HS() {
-  // Show only on iOS Safari, not in standalone mode, and not dismissed
-  const isIOS = /iPhone|iPad/.test(navigator.userAgent);
-  const isStandalone = window.matchMedia("(display-mode: standalone)").matches
-    || navigator.standalone;
-  const dismissed = localStorage.getItem("sinput_a2hs_dismissed");
+// --- A2HS guide — detect browser and show appropriate steps ---
+function showA2HSGuide() {
+  if (localStorage.getItem("sinput_a2hs_dismissed")) return;
+  if (window.matchMedia("(display-mode: standalone)").matches || navigator.standalone) return;
 
-  if (isIOS && !isStandalone && !dismissed) {
-    a2hsEl.classList.add("show");
+  const ua = navigator.userAgent;
+  let steps = "";
+
+  const isWeChat = /MicroMessenger/i.test(ua);
+  const isAlipay = /AlipayClient/i.test(ua);
+  const isIOS = /iPhone|iPad/i.test(ua);
+  const isSafari = isIOS && /Safari/i.test(ua) && !/CriOS|FxiOS/.test(ua) && !isWeChat && !isAlipay;
+  const isChromeIOS = /CriOS/i.test(ua);
+  const isAndroid = /Android/i.test(ua);
+
+  if (isWeChat || isAlipay) {
+    const appName = isWeChat ? "微信" : "支付宝";
+    steps = `
+      <b>当前在${appName}内，无法直接添加</b><br><br>
+      <b>1.</b> 点击右上角 <b>⋯</b><br>
+      <b>2.</b> 选择 <b>「在Safari中打开」</b>或<b>「在浏览器打开」</b><br>
+      <b>3.</b> 在 Safari 中点击底部 <b>分享 ↑</b><br>
+      <b>4.</b> 选择 <b>「添加到主屏幕」</b><br>
+      <br><span style="color:var(--text2);font-size:12px">从主屏幕打开后将以独立 App 形式运行，无浏览器地址栏</span>
+    `;
+  } else if (isSafari) {
+    steps = `
+      <b>1.</b> 点击底部 <b>分享</b>按钮 <b>↑</b><br>
+      <b>2.</b> 向下滑动，选择 <b>「添加到主屏幕」</b><br>
+      <br><span style="color:var(--text2);font-size:12px">添加后将以独立 App 形式运行，无浏览器地址栏</span>
+    `;
+  } else if (isChromeIOS) {
+    steps = `
+      <b>1.</b> 点击右下角 <b>分享</b>按钮<br>
+      <b>2.</b> 选择 <b>「添加到主屏幕」</b><br>
+      <br><span style="color:var(--text2);font-size:12px">添加后将以独立 App 形式运行</span>
+    `;
+  } else if (isAndroid) {
+    steps = `
+      <b>1.</b> 点击右上角 <b>⋮</b> 菜单<br>
+      <b>2.</b> 选择 <b>「添加到主屏幕」</b>或<b>「安装应用」</b><br>
+      <br><span style="color:var(--text2);font-size:12px">安装后将以独立 App 形式运行</span>
+    `;
+  } else {
+    steps = `
+      <b>1.</b> 用手机 Safari 或 Chrome 打开此页面<br>
+      <b>2.</b> 使用浏览器的「添加到主屏幕」功能<br>
+      <br><span style="color:var(--text2);font-size:12px">添加后将以独立 App 形式运行，无浏览器地址栏</span>
+    `;
   }
+
+  document.getElementById("a2hsSteps").innerHTML = steps;
+  document.getElementById("a2hsOverlay").classList.add("show");
 }
 
-function dismissA2hs() {
-  a2hsEl.classList.remove("show");
+document.getElementById("a2hsOk").addEventListener("click", () => {
+  document.getElementById("a2hsOverlay").classList.remove("show");
   localStorage.setItem("sinput_a2hs_dismissed", "1");
-}
+});
+document.getElementById("a2hsLater").addEventListener("click", () => {
+  document.getElementById("a2hsOverlay").classList.remove("show");
+  // Don't persist — will show again next time
+});
 
-// --- Visibility change (reconnect) ---
+// --- Reconnect on visibility change ---
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") {
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
+  if (document.visibilityState === "visible" && roomId && pairSecret) {
+    // Only reconnect if truly disconnected, not if already connecting
+    if (!ws || ws.readyState === WebSocket.CLOSED) {
       reconnectAttempt = 0;
       connect();
     }
   }
 });
 
-// --- Viewport resize (keyboard) ---
+// --- Keyboard handling: resize app to visual viewport ---
 if (window.visualViewport) {
-  window.visualViewport.addEventListener("resize", () => {
-    document.documentElement.style.setProperty(
-      "--vh",
-      window.visualViewport.height + "px"
-    );
-    document.querySelector(".app").style.height = window.visualViewport.height + "px";
-  });
+  const app = document.querySelector(".app");
+  function onViewportResize() {
+    app.style.height = window.visualViewport.height + "px";
+  }
+  window.visualViewport.addEventListener("resize", onViewportResize);
+  window.visualViewport.addEventListener("scroll", onViewportResize);
+  onViewportResize();
+}
+
+// --- Service Worker (required for Android PWA standalone mode) ---
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
 
 // --- Init ---
 if (roomId && pairSecret) {
   connect();
+  setTimeout(() => textInput.focus(), 500);
 }
 </script>
 </body>

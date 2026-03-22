@@ -127,8 +127,8 @@ export class SinputRoom implements DurableObject {
 
   private async handleAuth(ws: WebSocket, msg: AuthMessage) {
     if (!this.config) {
-      this.sendTo(ws, { type: "error", code: "UNKNOWN", message: "Room not initialized" });
-      ws.close(4000, "ROOM_NOT_INIT");
+      this.sendTo(ws, { type: "error", code: "ROOM_DESTROYED", message: "Room expired" });
+      ws.close(4006, "ROOM_DESTROYED");
       return;
     }
 
@@ -139,13 +139,9 @@ export class SinputRoom implements DurableObject {
       return;
     }
 
-    // For phone role, validate token on first connection
-    if (msg.role === "phone" && !this.hasClientWithRole("phone")) {
-      if (this.config.tokenConsumed) {
-        this.sendTo(ws, { type: "error", code: "TOKEN_CONSUMED", message: "Token already used" });
-        ws.close(4002, "TOKEN_CONSUMED");
-        return;
-      }
+    // For phone role on first-ever connection, check token expiry
+    // After first connection, pairSecret alone is sufficient for re-auth
+    if (msg.role === "phone" && !this.config.tokenConsumed) {
       if (Date.now() > this.config.tokenExpiresAt) {
         this.sendTo(ws, { type: "error", code: "TOKEN_EXPIRED", message: "Token expired" });
         ws.close(4003, "TOKEN_EXPIRED");
@@ -155,15 +151,9 @@ export class SinputRoom implements DurableObject {
       await this.state.storage.put("config", this.config);
     }
 
-    // Check if role slot is already taken by a different device
+    // Replace any existing connection for this role (same or different device)
+    // Sinput is 1:1 (one phone, one desktop), so new connection always wins
     const existingClient = this.getClientByRole(msg.role);
-    if (existingClient && existingClient.deviceId !== msg.deviceId) {
-      this.sendTo(ws, { type: "error", code: "ROOM_FULL", message: `${msg.role} slot taken` });
-      ws.close(4004, "ROOM_FULL");
-      return;
-    }
-
-    // Remove previous connection for same device (reconnect case)
     if (existingClient) {
       this.clients.delete(existingClient.ws);
       try { existingClient.ws.close(1000, "Replaced"); } catch { /* already closed */ }
@@ -177,6 +167,13 @@ export class SinputRoom implements DurableObject {
     };
     this.clients.set(ws, clientState);
     ws.serializeAttachment({ role: msg.role, deviceId: msg.deviceId, lastPing: clientState.lastPing });
+
+    // Mark token as consumed on any successful auth (desktop or phone)
+    // so subsequent connections only need pairSecret
+    if (!this.config.tokenConsumed) {
+      this.config.tokenConsumed = true;
+      this.state.storage.put("config", this.config);
+    }
 
     this.cancelDestroy();
     this.broadcastStatus();

@@ -35,7 +35,7 @@ export interface PongMessage {
 
 export interface ErrorMessage {
   type: "error";
-  code: "AUTH_FAILED" | "TOKEN_EXPIRED" | "TOKEN_CONSUMED" | "DESKTOP_OFFLINE" | "ROOM_FULL" | "UNKNOWN";
+  code: "AUTH_FAILED" | "TOKEN_EXPIRED" | "TOKEN_CONSUMED" | "DESKTOP_OFFLINE" | "ROOM_FULL" | "ROOM_DESTROYED" | "UNKNOWN";
   message: string;
 }
 

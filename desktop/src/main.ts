@@ -1,37 +1,54 @@
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
-// --- Config ---
 const API_BASE = "https://ws.sinput.jowork.work";
 const WS_BASE = "wss://ws.sinput.jowork.work";
 const PWA_BASE = "https://sinput.jowork.work";
 
-// --- State ---
 let ws: WebSocket | null = null;
 let roomId = "";
 let pairSecret = "";
 let deviceId = "";
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-let phoneOnline = false;
 
 // --- Elements ---
-const stateLoading = document.getElementById("stateLoading")!;
-const statePairing = document.getElementById("statePairing")!;
-const stateConnected = document.getElementById("stateConnected")!;
-const qrContainer = document.getElementById("qrContainer")!;
-const pairUrl = document.getElementById("pairUrl")!;
-const phoneDot = document.getElementById("phoneDot")!;
-const phoneStatus = document.getElementById("phoneStatus")!;
+
+const permBanner = document.getElementById("permBanner")!;
+const permBtn = document.getElementById("permBtn")!;
+const statusDot = document.getElementById("statusDot")!;
+const statusText = document.getElementById("statusText")!;
 const lastMsg = document.getElementById("lastMsg")!;
+const qrCard = document.getElementById("qrCard")!;
+const qrContainer = document.getElementById("qrContainer")!;
 const repairBtn = document.getElementById("repairBtn")!;
-const closeBtn = document.getElementById("closeBtn")!;
+const disconnectBtn = document.getElementById("disconnectBtn")!;
 const injectFlash = document.getElementById("injectFlash")!;
 
-// --- UI State ---
-function showState(state: "loading" | "pairing" | "connected") {
-  stateLoading.classList.toggle("active", state === "loading");
-  statePairing.classList.toggle("active", state === "pairing");
-  stateConnected.classList.toggle("active", state === "connected");
+// --- Permission: inline banner, not blocking ---
+
+permBtn.addEventListener("click", () => invoke("open_accessibility_settings"));
+
+async function checkPerm(): Promise<boolean> {
+  try {
+    return await invoke<boolean>("check_accessibility");
+  } catch {
+    return false;
+  }
+}
+
+async function updatePermBanner() {
+  const granted = await checkPerm();
+  permBanner.style.display = granted ? "none" : "block";
+}
+
+// --- Status ---
+
+function setStatus(state: "connected" | "waiting" | "disconnected", text: string) {
+  statusDot.className = state === "connected" ? "dot on" : state === "waiting" ? "dot wait" : "dot off";
+  statusText.textContent = text;
+  qrCard.style.display = state === "connected" ? "none" : "block";
+  lastMsg.style.display = state === "connected" ? "block" : "none";
+  disconnectBtn.style.display = state === "connected" ? "block" : "none";
+  invoke("update_tray_status", { connected: state === "connected" });
 }
 
 function flashInject() {
@@ -39,157 +56,159 @@ function flashInject() {
   setTimeout(() => injectFlash.classList.remove("show"), 600);
 }
 
-// --- QR Code (simple SVG-based) ---
 function renderQR(url: string) {
-  // Use a minimal QR code library inline — for MVP, display the URL as text
-  // and generate QR via an img tag pointing to a QR API
-  const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}&bgcolor=ffffff&color=000000&format=svg`;
-  qrContainer.innerHTML = `<img src="${qrApiUrl}" alt="QR Code" style="width:100%;height:100%;border-radius:4px;">`;
-  pairUrl.textContent = url;
+  const src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}&bgcolor=ffffff&color=000000&format=svg`;
+  qrContainer.innerHTML = `<img src="${src}" alt="QR">`;
 }
 
-// --- Room Creation ---
+// --- Room ---
+
 async function createRoom() {
-  showState("loading");
-
+  setStatus("disconnected", "未连接");
+  qrContainer.innerHTML = '<span style="color:#999;font-size:12px">生成中...</span>';
   try {
-    const result = await invoke<{
-      room_id: string;
-      token: string;
-      pair_secret: string;
-      device_id: string;
+    const r = await invoke<{
+      room_id: string; token: string; pair_secret: string; device_id: string;
     }>("create_room", { apiBase: API_BASE });
-
-    roomId = result.room_id;
-    pairSecret = result.pair_secret;
-    deviceId = result.device_id;
-
-    // Generate PWA URL for phone
-    const phoneUrl = `${PWA_BASE}/?room=${roomId}&secret=${pairSecret}`;
-    renderQR(phoneUrl);
-    showState("pairing");
-
-    // Connect desktop WebSocket
+    roomId = r.room_id;
+    pairSecret = r.pair_secret;
+    deviceId = r.device_id;
+    renderQR(`${PWA_BASE}/?room=${roomId}&secret=${pairSecret}`);
     connectWS();
-  } catch (e) {
-    console.error("Failed to create room:", e);
-    showState("loading");
-    // Retry after 3s
+  } catch {
+    qrContainer.innerHTML = '<span style="color:#FF3B30;font-size:12px">生成失败，重试中...</span>';
     setTimeout(createRoom, 3000);
   }
 }
 
-// --- WebSocket ---
-function connectWS() {
-  if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
+let reconnectAttempt = 0;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const wsUrl = `${WS_BASE}/api/room/${roomId}/ws`;
-  ws = new WebSocket(wsUrl);
-
-  ws.onopen = () => {
-    ws!.send(
-      JSON.stringify({
-        type: "auth",
-        pairSecret,
-        deviceId,
-        role: "desktop",
-      })
-    );
-    startHeartbeat();
-  };
-
-  ws.onmessage = (e) => {
-    let msg: any;
-    try {
-      msg = JSON.parse(e.data);
-    } catch {
-      return;
-    }
-
-    switch (msg.type) {
-      case "status":
-        phoneOnline = msg.phoneOnline;
-        if (phoneOnline) {
-          showState("connected");
-          phoneDot.className = "status-dot online";
-          phoneStatus.textContent = "iPhone 已连接";
-        } else {
-          phoneDot.className = "status-dot waiting";
-          phoneStatus.textContent = "等待手机连接...";
-        }
-        break;
-
-      case "text":
-        handleIncomingText(msg.text);
-        break;
-
-      case "pong":
-        break;
-
-      case "error":
-        console.error("Server error:", msg);
-        break;
-    }
-  };
-
-  ws.onclose = () => {
-    stopHeartbeat();
-    // Auto-reconnect after 2s
-    setTimeout(() => {
-      if (roomId) connectWS();
-    }, 2000);
-  };
-}
-
-// --- Text Injection ---
-async function handleIncomingText(text: string) {
-  lastMsg.textContent = text.length > 100 ? text.slice(0, 100) + "..." : text;
-
-  try {
-    await invoke("inject_text", { text });
-    flashInject();
-  } catch (e) {
-    console.error("Inject failed:", e);
-    // Fallback: at least show the text was received
-    lastMsg.textContent = `[注入失败] ${text}`;
+function cleanupWS() {
+  stopHeartbeat();
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  if (ws) {
+    ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
+    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
+    ws = null;
   }
 }
 
-// --- Heartbeat ---
+function connectWS() {
+  if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
+  cleanupWS();
+
+  const socket = new WebSocket(`${WS_BASE}/api/room/${roomId}/ws`);
+  ws = socket;
+
+  socket.onopen = () => {
+    if (ws !== socket) return;
+    socket.send(JSON.stringify({ type: "auth", pairSecret, deviceId, role: "desktop" }));
+    setStatus("waiting", "等待手机扫码...");
+    reconnectAttempt = 0;
+    startHeartbeat();
+  };
+
+  socket.onmessage = (e) => {
+    if (ws !== socket) return;
+    let msg: any;
+    try { msg = JSON.parse(e.data); } catch { return; }
+    switch (msg.type) {
+      case "status":
+        if (msg.phoneOnline) {
+          setStatus("connected", "已连接");
+          updatePermBanner();
+        } else {
+          setStatus("waiting", "等待手机连接...");
+        }
+        break;
+      case "text":
+        lastMsg.textContent = msg.text.length > 60 ? msg.text.slice(0, 60) + "…" : msg.text;
+        invoke("inject_text", { text: msg.text }).then(() => flashInject()).catch(() => {
+          lastMsg.textContent = `[注入失败] ${msg.text}`;
+        });
+        break;
+      case "error":
+        if (msg.code === "AUTH_FAILED" || msg.code === "UNKNOWN") {
+          invoke("clear_pairing");
+          cleanupWS();
+          createRoom();
+        }
+        break;
+    }
+  };
+
+  socket.onclose = (e) => {
+    if (ws !== socket) return;
+    ws = null;
+    stopHeartbeat();
+    if (e.code >= 4001 && e.code <= 4004) return;
+    // Exponential backoff: 2s, 3s, 4.5s, ... max 15s
+    const delay = Math.min(2000 * Math.pow(1.5, reconnectAttempt), 15000);
+    reconnectAttempt++;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(() => { reconnectTimer = null; if (roomId) connectWS(); }, delay);
+  };
+
+  socket.onerror = () => {};
+}
+
 function startHeartbeat() {
   stopHeartbeat();
   heartbeatTimer = setInterval(() => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "ping" }));
-    }
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "ping" }));
   }, 30000);
 }
 
 function stopHeartbeat() {
-  if (heartbeatTimer) {
-    clearInterval(heartbeatTimer);
-    heartbeatTimer = null;
-  }
+  if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
 }
 
-// --- Events ---
-closeBtn.addEventListener("click", async () => {
-  const win = getCurrentWebviewWindow();
-  await win.hide();
+// --- Actions ---
+
+disconnectBtn.addEventListener("click", () => {
+  cleanupWS();
+  roomId = "";
+  invoke("clear_pairing");
+  setStatus("disconnected", "未连接");
+  createRoom();
 });
 
 repairBtn.addEventListener("click", () => {
-  // Close existing WS
-  if (ws) {
-    ws.close();
-    ws = null;
-  }
-  stopHeartbeat();
-  phoneOnline = false;
+  cleanupWS();
+  invoke("clear_pairing");
   createRoom();
 });
 
 // --- Init ---
+
+async function init() {
+  // Check permission — show/hide banner (non-blocking)
+  await updatePermBanner();
+
+  // Check saved pairing
+  const saved = await invoke<{ room_id: string; pair_secret: string; device_id: string } | null>("get_saved_pairing");
+
+  if (saved?.room_id) {
+    // Has pairing → background reconnect, don't show window
+    roomId = saved.room_id;
+    pairSecret = saved.pair_secret;
+    deviceId = saved.device_id;
+    renderQR(`${PWA_BASE}/?room=${roomId}&secret=${pairSecret}`);
+    setStatus("waiting", "重连中...");
+    connectWS();
+  } else {
+    // No pairing → show window
+    await invoke("show_window");
+    createRoom();
+  }
+}
+
+// --- Entry ---
+
 window.addEventListener("DOMContentLoaded", () => {
-  createRoom();
+  setTimeout(() => init().catch(console.error), 300);
 });
+
+// Silently poll permission in background (no focus stealing, just hides the banner)
+setInterval(() => updatePermBanner(), 3000);

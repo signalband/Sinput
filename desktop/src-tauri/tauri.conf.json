@@ -14,21 +14,14 @@
     "windows": [
       {
         "label": "main",
-        "title": "Sinput",
-        "width": 280,
-        "height": 380,
+        "title": "Sinput 设置",
+        "width": 400,
+        "height": 540,
         "visible": false,
-        "decorations": false,
         "resizable": false,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "transparent": true
+        "center": true
       }
     ],
-    "trayIcon": {
-      "iconPath": "icons/tray-icon.png",
-      "iconAsTemplate": true
-    },
     "security": {
       "csp": null
     }
