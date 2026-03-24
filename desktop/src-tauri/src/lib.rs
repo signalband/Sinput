@@ -280,10 +280,19 @@ fn check_accessibility(prompt: Option<bool>) -> bool {
     }
 }
 
-/// Prompt macOS to add THIS binary to Accessibility permissions
+/// Prompt macOS to add THIS binary to Accessibility permissions AND open Settings
 #[tauri::command]
 fn open_accessibility_settings() {
-    check_accessibility(Some(true));
+    #[cfg(target_os = "macos")]
+    {
+        // Register this binary in TCC database via prompt
+        check_accessibility(Some(true));
+        // Also explicitly open System Settings → Accessibility (prompt alone
+        // may only show a notification on some macOS versions)
+        let _ = Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+            .spawn();
+    }
 }
 
 fn rebuild_tray_menu(app: &tauri::AppHandle, connected: bool) {
