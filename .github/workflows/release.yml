@@ -101,11 +101,15 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
-      - name: Create DMG
+      - name: Create DMG (with Applications symlink for drag-to-install)
         run: |
           APP=$(find desktop/src-tauri/target -name "Sinput.app" -path "*/bundle/macos/*" | head -1)
           DMG_NAME="Sinput_${{ steps.version.outputs.version }}_${{ matrix.arch }}.dmg"
-          hdiutil create -volname "Sinput" -srcfolder "$APP" -ov -format UDZO "$DMG_NAME"
+          STAGING=$(mktemp -d)
+          cp -R "$APP" "$STAGING/"
+          ln -s /Applications "$STAGING/Applications"
+          hdiutil create -volname "Sinput" -srcfolder "$STAGING" -ov -format UDZO "$DMG_NAME"
+          rm -rf "$STAGING"
 
       - name: Create tar.gz
         run: |
