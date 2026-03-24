@@ -103,8 +103,8 @@ function setState(newState: AppState) {
 
 permBtn.addEventListener("click", () => invoke("open_accessibility_settings"));
 
-async function checkPerm(): Promise<boolean> {
-  try { return await invoke<boolean>("check_accessibility"); }
+async function checkPerm(prompt = false): Promise<boolean> {
+  try { return await invoke<boolean>("check_accessibility", { prompt }); }
   catch { return false; }
 }
 
@@ -329,7 +329,9 @@ repairBtn.addEventListener("click", () => {
 // --- Init ---
 
 async function init() {
-  await updatePermBanner();
+  // First launch: if no accessibility permission, auto-open System Settings prompt
+  const hasPerm = await checkPerm(true); // prompt=true → opens Settings if not trusted
+  permBanner.style.display = hasPerm ? "none" : "block";
 
   const saved = await invoke<{ room_id: string; pair_secret: string; device_id: string } | null>("get_saved_pairing");
 

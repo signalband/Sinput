@@ -246,45 +246,44 @@ fn update_tray_status(app: tauri::AppHandle, connected: bool) {
 
 struct ConnectionState(Mutex<bool>);
 
-/// Check macOS Accessibility permission using the native API
+/// Check macOS Accessibility permission. If `prompt` is true, also opens System Settings.
 #[tauri::command]
-fn check_accessibility() -> bool {
+fn check_accessibility(prompt: Option<bool>) -> bool {
     #[cfg(target_os = "macos")]
     {
-        // AXIsProcessTrusted() — the real macOS Accessibility check
-        extern "C" {
-            fn AXIsProcessTrusted() -> bool;
+        if prompt.unwrap_or(false) {
+            // AXIsProcessTrustedWithOptions(prompt: true) → opens Settings AND registers this binary
+            use core_foundation::base::TCFType;
+            use core_foundation::boolean::CFBoolean;
+            use core_foundation::dictionary::CFDictionary;
+            use core_foundation::string::CFString;
+
+            extern "C" {
+                fn AXIsProcessTrustedWithOptions(options: core_foundation::base::CFTypeRef) -> bool;
+            }
+
+            let key = CFString::new("AXTrustedCheckOptionPrompt");
+            let value = CFBoolean::true_value();
+            let options = CFDictionary::from_CFType_pairs(&[(key.as_CFType(), value.as_CFType())]);
+            unsafe { AXIsProcessTrustedWithOptions(options.as_concrete_TypeRef() as _) }
+        } else {
+            extern "C" {
+                fn AXIsProcessTrusted() -> bool;
+            }
+            unsafe { AXIsProcessTrusted() }
         }
-        unsafe { AXIsProcessTrusted() }
     }
     #[cfg(not(target_os = "macos"))]
-    { true }
+    {
+        let _ = prompt;
+        true
+    }
 }
 
 /// Prompt macOS to add THIS binary to Accessibility permissions
 #[tauri::command]
 fn open_accessibility_settings() {
-    #[cfg(target_os = "macos")]
-    {
-        use core_foundation::base::TCFType;
-        use core_foundation::boolean::CFBoolean;
-        use core_foundation::dictionary::CFDictionary;
-        use core_foundation::string::CFString;
-
-        extern "C" {
-            fn AXIsProcessTrustedWithOptions(options: core_foundation::base::CFTypeRef) -> bool;
-        }
-
-        // kAXTrustedCheckOptionPrompt = true → opens System Settings AND registers
-        // THIS specific binary, so the user toggles the right entry.
-        let key = CFString::new("AXTrustedCheckOptionPrompt");
-        let value = CFBoolean::true_value();
-        let options = CFDictionary::from_CFType_pairs(&[(key.as_CFType(), value.as_CFType())]);
-
-        unsafe {
-            AXIsProcessTrustedWithOptions(options.as_concrete_TypeRef() as _);
-        }
-    }
+    check_accessibility(Some(true));
 }
 
 fn rebuild_tray_menu(app: &tauri::AppHandle, connected: bool) {
