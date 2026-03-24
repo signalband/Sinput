@@ -1,5 +1,5 @@
 // Sinput Service Worker — required for Android PWA standalone mode
-const CACHE_NAME = "sinput-v4";
+const CACHE_NAME = "sinput-v5";
 const ASSETS = ["/", "/index.html", "/manifest.json", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (e) => {

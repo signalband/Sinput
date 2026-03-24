@@ -261,15 +261,29 @@ fn check_accessibility() -> bool {
     { true }
 }
 
-/// Open System Settings → Accessibility and prompt user to add the app
+/// Prompt macOS to add THIS binary to Accessibility permissions
 #[tauri::command]
 fn open_accessibility_settings() {
     #[cfg(target_os = "macos")]
     {
-        // On macOS 13+, use the new URL scheme
-        let _ = Command::new("open")
-            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
-            .spawn();
+        use core_foundation::base::TCFType;
+        use core_foundation::boolean::CFBoolean;
+        use core_foundation::dictionary::CFDictionary;
+        use core_foundation::string::CFString;
+
+        extern "C" {
+            fn AXIsProcessTrustedWithOptions(options: core_foundation::base::CFTypeRef) -> bool;
+        }
+
+        // kAXTrustedCheckOptionPrompt = true → opens System Settings AND registers
+        // THIS specific binary, so the user toggles the right entry.
+        let key = CFString::new("AXTrustedCheckOptionPrompt");
+        let value = CFBoolean::true_value();
+        let options = CFDictionary::from_CFType_pairs(&[(key.as_CFType(), value.as_CFType())]);
+
+        unsafe {
+            AXIsProcessTrustedWithOptions(options.as_concrete_TypeRef() as _);
+        }
     }
 }
 
