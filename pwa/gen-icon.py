@@ -163,9 +163,9 @@ def make_ico(source_512: str, out_path: str):
 
 if __name__ == "__main__":
     print("Generating Sinput icons...\n[PWA]")
-    make_app_icon(512, "pwa/public/icon-512.png", force_rgb=True)
-    make_app_icon(192, "pwa/public/icon-192.png", force_rgb=True)
-    make_app_icon(180, "pwa/public/apple-touch-icon.png", force_rgb=True)
+    make_app_icon(512, "pwa/public/icon-512-v2.png", force_rgb=True)
+    make_app_icon(192, "pwa/public/icon-192-v2.png", force_rgb=True)
+    make_app_icon(180, "pwa/public/apple-touch-icon-v2.png", force_rgb=True)
 
     print("\n[Desktop — app icons]")
     # Tauri required sizes
