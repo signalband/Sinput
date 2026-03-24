@@ -9,22 +9,55 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: |
+            Download the desktop app for your platform below.
+
+            **Phone:** Open [sinput.jowork.work](https://sinput.jowork.work) on your phone browser.
+
+            ### macOS
+            After installing, if macOS blocks the app:
+            1. Open **System Settings → Privacy & Security**
+            2. Scroll down — you'll see a message about Sinput being blocked
+            3. Click **"Open Anyway"**
+
+            ### Windows
+            Run the `.exe` installer or install via `.msi`.
+
+            ---
+
+            下载对应平台的桌面端应用。
+
+            **手机端：** 用手机浏览器打开 [sinput.jowork.work](https://sinput.jowork.work)。
+
+            ### macOS
+            安装后如果 macOS 阻止打开：
+            1. 打开 **系统设置 → 隐私与安全性**
+            2. 向下滚动，会看到 Sinput 被阻止的提示
+            3. 点击 **"仍要打开"**
+
+            ### Windows
+            运行 `.exe` 安装包或使用 `.msi` 安装。
+          draft: false
+          prerelease: false
+
+  build-macos:
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
-            target: aarch64-apple-darwin
-            label: macOS-arm64
-          - platform: macos-latest
-            target: x86_64-apple-darwin
-            label: macOS-x64
-          - platform: windows-latest
-            target: x86_64-pc-windows-msvc
-            label: Windows-x64
-
-    runs-on: ${{ matrix.platform }}
+          - target: aarch64-apple-darwin
+            arch: aarch64
+          - target: x86_64-apple-darwin
+            arch: x64
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -51,36 +84,74 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Build desktop app
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build .app only
+        run: cd desktop && pnpm tauri build --target ${{ matrix.target }} --bundles app
+
+      - name: Strip ad-hoc signature (fixes "damaged" → allows "Open Anyway")
+        run: |
+          APP=$(find desktop/src-tauri/target -name "Sinput.app" -path "*/bundle/macos/*" | head -1)
+          echo "Stripping signature from: $APP"
+          codesign --remove-signature "$APP"
+          # Verify it's now unsigned
+          codesign -vv "$APP" 2>&1 || echo "✓ App is now unsigned (expected)"
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Create DMG
+        run: |
+          APP=$(find desktop/src-tauri/target -name "Sinput.app" -path "*/bundle/macos/*" | head -1)
+          DMG_NAME="Sinput_${{ steps.version.outputs.version }}_${{ matrix.arch }}.dmg"
+          hdiutil create -volname "Sinput" -srcfolder "$APP" -ov -format UDZO "$DMG_NAME"
+
+      - name: Create tar.gz
+        run: |
+          APP_DIR=$(find desktop/src-tauri/target -name "Sinput.app" -path "*/bundle/macos/*" -exec dirname {} \; | head -1)
+          tar -czf "Sinput_${{ matrix.arch }}.app.tar.gz" -C "$APP_DIR" Sinput.app
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
         with:
-          projectPath: desktop
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Sinput ${{ github.ref_name }}'
-          releaseBody: |
-            Download the desktop app for your platform below.
+          files: |
+            Sinput_${{ steps.version.outputs.version }}_${{ matrix.arch }}.dmg
+            Sinput_${{ matrix.arch }}.app.tar.gz
 
-            **Phone:** Open [sinput.jowork.work](https://sinput.jowork.work) on your phone browser.
+  build-windows:
+    needs: create-release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
 
-            ### macOS
-            If you see "Sinput is damaged and can't be opened", run in Terminal:
-            ```
-            xattr -cr /Applications/Sinput.app
-            ```
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-            ---
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
 
-            下载对应平台的桌面端应用。
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
 
-            **手机端：** 用手机浏览器打开 [sinput.jowork.work](https://sinput.jowork.work)。
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
 
-            ### macOS
-            如果提示"已损坏，无法打开"，在终端执行：
-            ```
-            xattr -cr /Applications/Sinput.app
-            ```
-          releaseDraft: false
-          prerelease: false
-          args: --target ${{ matrix.target }}
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build desktop app
+        run: cd desktop && pnpm tauri build --target x86_64-pc-windows-msvc
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi

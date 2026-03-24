@@ -48,11 +48,7 @@ The desktop app writes text to the clipboard, simulates ⌘V (macOS) or Ctrl+V (
 | **macOS** (Apple Silicon) | [Sinput.dmg](https://github.com/signalband/Sinput/releases/latest) |
 | **Windows** (x64) | [Sinput.msi](https://github.com/signalband/Sinput/releases/latest) |
 
-> **macOS users:** If you see *"Sinput is damaged and can't be opened"*, run this in Terminal after installing:
-> ```bash
-> xattr -cr /Applications/Sinput.app
-> ```
-> This removes the macOS quarantine flag. The app is open-source and safe — Apple just blocks unsigned apps by default.
+> **macOS users:** If macOS blocks the app, go to **System Settings → Privacy & Security**, scroll down, and click **"Open Anyway"** next to the Sinput message.
 
 ### Phone (PWA)
 
@@ -165,11 +161,7 @@ Sinput 让你用手机的语音键盘在电脑上打字。打开手机网页，�
 
 支持 iOS Safari、Chrome 和 Android 浏览器。
 
-> **macOS 用户：** 如果打开时提示 *"Sinput 已损坏，无法打开"*，在终端执行：
-> ```bash
-> xattr -cr /Applications/Sinput.app
-> ```
-> 这会移除 macOS 隔离标记。本应用开源安全，Apple 默认阻止未签名应用。
+> **macOS 用户：** 如果 macOS 阻止打开，前往 **系统设置 → 隐私与安全性**，向下滚动，点击 Sinput 旁边的 **"仍要打开"**。
 
 ## 特性
 
