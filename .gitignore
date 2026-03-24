@@ -3,3 +3,8 @@ dist/
 target/
 .DS_Store
 .gstack/
+*.dmg
+*.msi
+*.exe
+*.app
+*.log

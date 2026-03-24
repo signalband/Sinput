@@ -36,8 +36,18 @@ fn simulate_cmd_v() {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
-fn simulate_cmd_v() {}
+#[cfg(target_os = "windows")]
+fn simulate_ctrl_v() {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let _ = Command::new("powershell")
+        .args([
+            "-command",
+            "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')",
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+}
 
 // --- Pairing persistence ---
 
@@ -113,45 +123,90 @@ fn clear_pairing() {
 #[tauri::command]
 fn inject_text(text: String) -> Result<(), String> {
     let handle = thread::spawn(move || -> Result<(), String> {
-        let saved = Command::new("pbpaste")
-            .output()
-            .ok()
-            .and_then(|o| {
-                if o.status.success() {
-                    Some(String::from_utf8_lossy(&o.stdout).to_string())
-                } else {
-                    None
-                }
-            });
-        let mut child = Command::new("pbcopy")
-            .stdin(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("{}", e))?;
-        if let Some(stdin) = child.stdin.as_mut() {
-            use std::io::Write;
-            stdin.write_all(text.as_bytes()).map_err(|e| format!("{}", e))?;
+        #[cfg(target_os = "macos")]
+        {
+            inject_text_macos(&text)
         }
-        child.wait().map_err(|e| format!("{}", e))?;
-
-        // Simulate ⌘V using CGEvent (runs as Sinput.app, not a subprocess)
-        simulate_cmd_v();
-
-        thread::sleep(Duration::from_millis(150));
-
-        if let Some(original) = saved {
-            let mut c = Command::new("pbcopy")
-                .stdin(std::process::Stdio::piped())
-                .spawn()
-                .map_err(|e| format!("{}", e))?;
-            if let Some(stdin) = c.stdin.as_mut() {
-                use std::io::Write;
-                let _ = stdin.write_all(original.as_bytes());
-            }
-            let _ = c.wait();
+        #[cfg(target_os = "windows")]
+        {
+            inject_text_windows(&text)
         }
-        Ok(())
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            let _ = &text;
+            Err("Unsupported platform".to_string())
+        }
     });
     handle.join().map_err(|_| "Thread panic".to_string())?
+}
+
+#[cfg(target_os = "macos")]
+fn inject_text_macos(text: &str) -> Result<(), String> {
+    use std::io::Write;
+
+    let saved = Command::new("pbpaste")
+        .output()
+        .ok()
+        .and_then(|o| if o.status.success() { Some(String::from_utf8_lossy(&o.stdout).to_string()) } else { None });
+
+    let mut child = Command::new("pbcopy")
+        .stdin(std::process::Stdio::piped())
+        .spawn().map_err(|e| format!("{}", e))?;
+    if let Some(stdin) = child.stdin.as_mut() {
+        stdin.write_all(text.as_bytes()).map_err(|e| format!("{}", e))?;
+    }
+    child.wait().map_err(|e| format!("{}", e))?;
+
+    simulate_cmd_v();
+    thread::sleep(Duration::from_millis(150));
+
+    if let Some(original) = saved {
+        let mut c = Command::new("pbcopy")
+            .stdin(std::process::Stdio::piped())
+            .spawn().map_err(|e| format!("{}", e))?;
+        if let Some(stdin) = c.stdin.as_mut() { let _ = stdin.write_all(original.as_bytes()); }
+        let _ = c.wait();
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn inject_text_windows(text: &str) -> Result<(), String> {
+    use std::io::Write;
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    // Save current clipboard
+    let saved = Command::new("powershell")
+        .args(["-command", "Get-Clipboard"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .ok()
+        .and_then(|o| if o.status.success() { Some(String::from_utf8_lossy(&o.stdout).trim_end().to_string()) } else { None });
+
+    // Write text to clipboard via clip.exe
+    let mut child = Command::new("clip")
+        .stdin(std::process::Stdio::piped())
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn().map_err(|e| format!("{}", e))?;
+    if let Some(stdin) = child.stdin.as_mut() {
+        stdin.write_all(text.as_bytes()).map_err(|e| format!("{}", e))?;
+    }
+    child.wait().map_err(|e| format!("{}", e))?;
+
+    // Simulate Ctrl+V
+    simulate_ctrl_v();
+    thread::sleep(Duration::from_millis(150));
+
+    // Restore clipboard
+    if let Some(original) = saved {
+        let escaped = original.replace('\'', "''");
+        let _ = Command::new("powershell")
+            .args(["-command", &format!("Set-Clipboard -Value '{}'", escaped)])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+    }
+    Ok(())
 }
 
 #[tauri::command]

@@ -41,47 +41,52 @@
     flex-direction: column;
     height: 100%;
     padding: 12px 20px;
-    padding-top: env(safe-area-inset-top, 12px);
+    padding-top: calc(env(safe-area-inset-top, 12px) + 4px);
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
   }
 
-  /* --- Corner status dot --- */
-  .status-corner {
+  /* --- Status bar: dot + label, left-aligned --- */
+  .status-bar {
     flex-shrink: 0;
-    padding: 8px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0;
     position: relative;
+    min-height: 44px;
+  }
+  .status-dot-btn {
+    width: 44px; height: 44px;
+    display: flex; align-items: center; justify-content: center;
+    background: none; border: none; cursor: pointer;
+    margin: -6px; padding: 0;
   }
   .status-dot {
     width: 10px; height: 10px; border-radius: 50%;
-    cursor: pointer;
-    /* 48px touch target via padding */
-    padding: 19px;
-    margin: -19px;
-    background-clip: content-box;
+    flex-shrink: 0;
+    transition: background 0.3s ease-out, box-shadow 0.3s ease-out;
   }
-  .status-dot.connected { background-color: var(--green); animation: pulse 2s ease-in-out infinite; }
-  .status-dot.disconnected { background-color: var(--red); }
-  .status-dot.connecting { background-color: var(--amber); animation: pulse 1s ease-in-out infinite; }
+  .status-dot.connected { background: var(--green); box-shadow: 0 0 8px rgba(34, 197, 94, 0.6); animation: pulse 2s ease-in-out infinite; }
+  .status-dot.disconnected { background: var(--red); }
+  .status-dot.connecting { background: var(--amber); animation: pulse 1s ease-in-out infinite; }
 
   @keyframes pulse {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.5; transform: scale(0.9); }
   }
 
-  /* Disconnected inline text — only visible when not connected */
   .status-label {
-    display: none;
     font-size: 13px; font-weight: 500;
-    margin-left: 28px; /* 10px dot + 19px padding - 1px */
-    line-height: 10px;
-    position: absolute; top: 50%; transform: translateY(-50%); left: 20px;
+    display: none;
   }
   .status-label.disconnected { display: inline; color: var(--red); }
   .status-label.connecting { display: inline; color: var(--amber); }
+  .status-label.connected { display: inline; color: var(--text2); }
 
-  /* --- Status popover (click green dot) --- */
+  /* --- Status popover (click dot) --- */
   .status-popover {
     display: none;
-    position: absolute; top: 44px; left: 0; z-index: 15;
+    position: absolute; top: 48px; left: 0; z-index: 15;
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 12px; padding: 16px 20px;
     min-width: 200px;
@@ -112,17 +117,20 @@
 
   /* --- Textarea --- */
   .input-area {
-    flex: 1; min-height: 0; margin: 8px 0;
-    overflow-y: auto;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    margin: 12px 0;
   }
 
   #textInput {
     width: 100%;
+    flex: 1;
     min-height: 120px;
-    max-height: 40vh;
     padding: 16px 18px;
     background: var(--surface);
-    border: none;
+    border: 1.5px solid transparent;
     border-radius: 16px;
     color: var(--text);
     font-family: system-ui, -apple-system, sans-serif;
@@ -131,9 +139,13 @@
     resize: none;
     outline: none;
     -webkit-appearance: none;
-    overflow-y: hidden;
+    overflow-y: auto;
+    transition: border-color 0.2s ease-out, box-shadow 0.2s ease-out;
   }
-  #textInput:focus { box-shadow: 0 0 0 1.5px var(--green); }
+  #textInput:focus {
+    border-color: var(--green);
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1), 0 0 20px rgba(34, 197, 94, 0.06);
+  }
   #textInput::placeholder { color: var(--text2); }
 
   /* --- Send button --- */
@@ -168,21 +180,32 @@
   /* Send button ack state */
   #sendBtn.ack {
     background: var(--green-aa);
+    animation: ack-pop 0.3s ease-out;
+  }
+  @keyframes ack-pop {
+    0% { transform: scale(1); }
+    40% { transform: scale(0.96); }
+    100% { transform: scale(1); }
   }
 
   /* --- A2HS guide --- */
   .a2hs-overlay {
-    display: none;
+    display: flex;
     position: fixed; inset: 0; z-index: 20;
     background: rgba(0,0,0,0.85);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 16px;
     padding: 32px;
     text-align: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease-out;
   }
-  .a2hs-overlay.show { display: flex; }
+  .a2hs-overlay.show { opacity: 1; pointer-events: auto; }
   .a2hs-title { font-size: 20px; font-weight: 600; }
   .a2hs-steps { font-size: 14px; color: var(--text2); line-height: 2; text-align: left; }
   .a2hs-steps b { color: var(--text); }
@@ -199,21 +222,48 @@
 
   /* --- Pair overlay --- */
   .pair-overlay {
-    display: none; position: fixed; inset: 0; background: var(--bg); z-index: 10;
+    display: flex; position: fixed; inset: 0; background: var(--bg); z-index: 10;
     flex-direction: column; align-items: center; justify-content: center;
-    gap: 16px; padding: 32px;
+    gap: 20px; padding: 32px;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.25s ease-out;
   }
-  .pair-overlay.show { display: flex; }
+  .pair-overlay.show { opacity: 1; pointer-events: auto; }
+  .pair-code-input {
+    font-size: 32px; text-align: center; letter-spacing: 8px;
+    width: 220px; padding: 14px 12px;
+    border: 1.5px solid var(--border); border-radius: 16px;
+    background: var(--surface); color: var(--text);
+    outline: none; font-variant-numeric: tabular-nums;
+    transition: border-color 0.2s ease-out, box-shadow 0.2s ease-out;
+  }
+  .pair-code-input::placeholder { color: var(--text2); letter-spacing: 8px; }
+  .pair-code-input:focus {
+    border-color: var(--green);
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+  }
+  .pair-code-error {
+    color: var(--red); font-size: 13px; min-height: 20px; text-align: center;
+  }
+  .pair-submit {
+    padding: 14px 48px; background: var(--green); color: #fff; border: none;
+    border-radius: 16px; font-size: 16px; font-weight: 500;
+    cursor: pointer; min-width: 220px; min-height: 48px;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .pair-submit:active { background: var(--green-aa); transform: scale(0.98); }
   .pair-title { font-size: 18px; font-weight: 500; }
   .pair-msg { font-size: 14px; color: var(--text2); text-align: center; }
 
   /* --- Error overlay --- */
   .error-overlay {
-    display: none; position: fixed; inset: 0; background: var(--bg); z-index: 10;
+    display: flex; position: fixed; inset: 0; background: var(--bg); z-index: 10;
     flex-direction: column; align-items: center; justify-content: center;
     gap: 16px; padding: 32px;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.25s ease-out;
   }
-  .error-overlay.show { display: flex; }
+  .error-overlay.show { opacity: 1; pointer-events: auto; }
   .error-title { font-size: 18px; font-weight: 500; color: var(--red); }
   .error-msg { font-size: 14px; color: var(--text2); text-align: center; }
   .error-retry {
@@ -225,11 +275,13 @@
 </head>
 <body>
   <div class="app">
-    <!-- Corner status dot -->
-    <div class="status-corner">
-      <div class="status-dot connecting" id="statusDot"
-           role="button" tabindex="0"
-           aria-label="连接状态：连接中"></div>
+    <!-- Status bar: dot + label -->
+    <div class="status-bar">
+      <button class="status-dot-btn" id="statusDotBtn"
+              role="button" tabindex="0"
+              aria-label="连接状态：连接中">
+        <div class="status-dot connecting" id="statusDot"></div>
+      </button>
       <span class="status-label connecting" id="statusLabel">连接中...</span>
 
       <!-- Popover: shown on dot click -->
@@ -264,13 +316,10 @@
   <div class="pair-overlay" id="pairOverlay">
     <div class="pair-title">连接到电脑</div>
     <div class="pair-msg">输入电脑端显示的 6 位配对码</div>
-    <input id="codeInput" type="tel" maxlength="6" pattern="[0-9]*" inputmode="numeric"
-      style="font-size:32px;text-align:center;letter-spacing:8px;width:200px;padding:12px;
-      border:2px solid var(--border);border-radius:16px;background:var(--surface);color:var(--text);
-      outline:none;font-variant-numeric:tabular-nums" placeholder="000000">
-    <div id="codeError" style="color:var(--red);font-size:13px;min-height:20px"></div>
-    <button id="codeSubmit" style="padding:14px 48px;background:var(--green);color:#fff;border:none;
-      border-radius:16px;font-size:16px;font-weight:500;cursor:pointer;min-width:200px;min-height:48px">配对</button>
+    <input id="codeInput" class="pair-code-input" type="tel" maxlength="6"
+      pattern="[0-9]*" inputmode="numeric" placeholder="000000">
+    <div id="codeError" class="pair-code-error"></div>
+    <button id="codeSubmit" class="pair-submit">配对</button>
   </div>
 
   <!-- Error / reconnect-failed overlay -->
@@ -358,10 +407,15 @@ function render() {
 function setStatusUI(state, labelText) {
   statusDot.className = "status-dot " + state;
   statusLabel.className = "status-label " + state;
-  statusLabel.textContent = labelText;
+  // Always show label — connected shows subdued text
+  if (state === "connected") {
+    statusLabel.textContent = "已连接";
+  } else {
+    statusLabel.textContent = labelText;
+  }
   // Update aria
   const ariaMap = { connected: "已连接到电脑", disconnected: "未连接", connecting: "连接中" };
-  statusDot.setAttribute("aria-label", "连接状态：" + (ariaMap[state] || labelText));
+  document.getElementById("statusDotBtn").setAttribute("aria-label", "连接状态：" + (ariaMap[state] || labelText));
   // Update popover content
   popoverDot.className = "status-popover-dot " + (state === "connected" ? "on" : "off");
   const popoverTextMap = {
@@ -394,8 +448,7 @@ function closePopover() {
   popoverBackdrop.classList.remove("show");
 }
 
-statusDot.addEventListener("click", togglePopover);
-statusDot.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); togglePopover(); }});
+document.getElementById("statusDotBtn").addEventListener("click", togglePopover);
 popoverBackdrop.addEventListener("click", closePopover);
 
 // --- Pair overlay ---
@@ -567,7 +620,7 @@ function send() {
   if (!text || !ws || ws.readyState !== WebSocket.OPEN || !desktopOnline) return;
   ws.send(JSON.stringify({ type: "text", text, ts: Date.now() }));
   textInput.value = "";
-  textInput.style.height = 'auto';
+  textInput.style.height = '';
   textInput.focus();
 }
 
@@ -604,10 +657,11 @@ textInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
 });
 
-// Auto-grow
+// Auto-grow: only expand beyond flex-allocated height when content overflows
 textInput.addEventListener("input", () => {
-  textInput.style.height = 'auto';
-  textInput.style.height = Math.min(textInput.scrollHeight, window.innerHeight * 0.4) + 'px';
+  // Reset to let flex determine natural height
+  textInput.style.height = '';
+  // If content exceeds flex-allocated height, scrollbar handles it (overflow-y: auto)
 });
 
 // --- Ack: feedback on send button ---
