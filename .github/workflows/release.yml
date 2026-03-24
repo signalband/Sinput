@@ -64,11 +64,23 @@ jobs:
 
             **Phone:** Open [sinput.jowork.work](https://sinput.jowork.work) on your phone browser.
 
+            ### macOS
+            If you see "Sinput is damaged and can't be opened", run in Terminal:
+            ```
+            xattr -cr /Applications/Sinput.app
+            ```
+
             ---
 
             下载对应平台的桌面端应用。
 
             **手机端：** 用手机浏览器打开 [sinput.jowork.work](https://sinput.jowork.work)。
+
+            ### macOS
+            如果提示"已损坏，无法打开"，在终端执行：
+            ```
+            xattr -cr /Applications/Sinput.app
+            ```
           releaseDraft: false
           prerelease: false
           args: --target ${{ matrix.target }}
