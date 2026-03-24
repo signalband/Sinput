@@ -87,13 +87,15 @@ jobs:
       - name: Build .app only
         run: cd desktop && pnpm tauri build --target ${{ matrix.target }} --bundles app
 
-      - name: Strip ad-hoc signature (fixes "damaged" → allows "Open Anyway")
+      - name: Re-sign app (strip Tauri signature, clean ad-hoc without hardened runtime)
         run: |
           APP=$(find desktop/src-tauri/target -name "Sinput.app" -path "*/bundle/macos/*" | head -1)
-          echo "Stripping signature from: $APP"
+          echo "Re-signing: $APP"
+          # Strip Tauri's signature (may include hardened runtime flags that cause "damaged")
           codesign --remove-signature "$APP"
-          # Verify it's now unsigned
-          codesign -vv "$APP" 2>&1 || echo "✓ App is now unsigned (expected)"
+          # Re-sign ad-hoc: allows execution on Apple Silicon, Gatekeeper shows "cannot verify" (not "damaged")
+          codesign --force --deep --sign - "$APP"
+          codesign -vv "$APP" 2>&1 || true
 
       - name: Extract version from tag
         id: version
