@@ -240,7 +240,7 @@ function connectWS() {
         });
         break;
       case "error":
-        if (msg.code === "AUTH_FAILED" || msg.code === "UNKNOWN") {
+        if (["AUTH_FAILED", "ROOM_DESTROYED", "TOKEN_EXPIRED", "UNKNOWN"].includes(msg.code)) {
           invoke("clear_pairing");
           cleanupWS();
           createRoom();
@@ -253,7 +253,12 @@ function connectWS() {
     if (ws !== socket) return;
     ws = null;
     stopHeartbeat();
-    if (e.code >= 4001 && e.code <= 4007) return;
+    // Auth/room errors (4001-4007): room is dead, create a new one
+    if (e.code >= 4001 && e.code <= 4007) {
+      invoke("clear_pairing");
+      createRoom();
+      return;
+    }
     scheduleReconnect();
   };
 
