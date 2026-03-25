@@ -461,12 +461,16 @@ popoverBackdrop.addEventListener("click", closePopover);
 // --- Pair overlay ---
 
 function showPairInput() {
+  const wasShown = pairOverlay.classList.contains("show");
   pairOverlay.classList.add("show");
   errorOverlay.classList.remove("show");
   // Show reconnect hint if we have stored credentials (background reconnecting)
   const hint = document.getElementById("pairReconnectHint");
   hint.style.display = (roomId && pairSecret) ? "block" : "none";
-  setTimeout(() => document.getElementById("codeInput").focus(), 100);
+  // Only auto-focus on first show, not on every render (avoid interrupting typing)
+  if (!wasShown) {
+    setTimeout(() => document.getElementById("codeInput").focus(), 100);
+  }
 }
 
 function hidePairOverlay() {
@@ -489,17 +493,21 @@ if (!roomId || !pairSecret) {
   showPairInput();
 }
 
+let isSubmitting = false;
 document.getElementById("codeSubmit").addEventListener("click", submitCode);
 document.getElementById("codeInput").addEventListener("keydown", (e) => {
   if (e.key === "Enter") submitCode();
 });
 
 async function submitCode() {
+  if (isSubmitting) return; // Prevent double-submit (code is one-time use)
   const code = document.getElementById("codeInput").value.trim();
   const errorEl = document.getElementById("codeError");
   if (code.length !== 6) { errorEl.textContent = "请输入 6 位数字"; return; }
 
+  isSubmitting = true;
   errorEl.textContent = "";
+  document.getElementById("codeSubmit").disabled = true;
   document.getElementById("codeSubmit").textContent = "配对中...";
 
   try {
@@ -514,10 +522,15 @@ async function submitCode() {
       const msgs = { INVALID_CODE: "配对码无效", CODE_EXPIRED: "配对码已过期", TOO_MANY_ATTEMPTS: "尝试次数过多" };
       errorEl.textContent = msgs[data.error] || "配对失败";
       document.getElementById("codeSubmit").textContent = "配对";
+      document.getElementById("codeSubmit").disabled = false;
       document.getElementById("codeInput").value = "";
       document.getElementById("codeInput").focus();
+      isSubmitting = false;
       return;
     }
+
+    // Success — kill old WS immediately to prevent race condition
+    cleanup();
 
     // Success magic moment
     const codeInput = document.getElementById("codeInput");
@@ -534,13 +547,17 @@ async function submitCode() {
       hidePairOverlay();
       document.getElementById("codeSubmit").textContent = "配对";
       document.getElementById("codeSubmit").style.background = "";
+      document.getElementById("codeSubmit").disabled = false;
       codeInput.style.borderColor = "";
       codeInput.value = "";
+      isSubmitting = false;
       connect();
     }, 600);
   } catch {
     errorEl.textContent = "网络错误，请重试";
     document.getElementById("codeSubmit").textContent = "配对";
+    document.getElementById("codeSubmit").disabled = false;
+    isSubmitting = false;
   }
 }
 
