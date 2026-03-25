@@ -320,6 +320,10 @@
       pattern="[0-9]*" inputmode="numeric" placeholder="000000">
     <div id="codeError" class="pair-code-error"></div>
     <button id="codeSubmit" class="pair-submit">配对</button>
+    <div id="pairReconnectHint" style="display:none;margin-top:12px;font-size:12px;color:var(--text2);text-align:center">
+      正在尝试重新连接...
+      <button id="pairClearBtn" style="display:block;margin:8px auto 0;background:none;border:none;color:var(--text2);font-size:12px;text-decoration:underline;cursor:pointer;padding:8px;min-height:44px">清除旧配对，重新连接</button>
+    </div>
   </div>
 
   <!-- Error / reconnect-failed overlay -->
@@ -379,28 +383,31 @@ const errorOverlay = document.getElementById("errorOverlay");
 // --- Render ---
 
 function render() {
-  switch (appState) {
-    case "unpaired":
-      setStatusUI("disconnected", "未连接");
-      sendBtn.disabled = true;
-      break;
-    case "paired-connected":
-      setStatusUI("connected", "");
-      sendBtn.disabled = false;
-      break;
-    case "paired-waiting":
-      setStatusUI("disconnected", "等待电脑连接");
-      sendBtn.disabled = true;
-      break;
-    case "reconnecting":
-      setStatusUI("connecting", "连接中...");
-      sendBtn.disabled = true;
-      break;
-    case "reconnect-failed":
+  // Two visual states: connected (show input) or not (show pairing)
+  if (appState === "paired-connected") {
+    // --- Connected: show input, hide pair overlay ---
+    setStatusUI("connected", "");
+    sendBtn.disabled = false;
+    hidePairOverlay();
+    errorOverlay.classList.remove("show");
+  } else {
+    // --- Not connected: show pair overlay ---
+    sendBtn.disabled = true;
+    if (appState === "reconnect-failed") {
       setStatusUI("disconnected", "连接失败");
-      sendBtn.disabled = true;
       showError("连接失败", "无法连接到服务器，请检查网络后重试");
-      break;
+    } else if (appState === "reconnecting") {
+      setStatusUI("connecting", "连接中...");
+      // Show pair overlay with connecting hint, background reconnects
+      showPairInput();
+    } else if (appState === "paired-waiting") {
+      setStatusUI("disconnected", "等待电脑连接");
+      showPairInput();
+    } else {
+      // unpaired
+      setStatusUI("disconnected", "未连接");
+      showPairInput();
+    }
   }
 }
 
@@ -456,12 +463,27 @@ popoverBackdrop.addEventListener("click", closePopover);
 function showPairInput() {
   pairOverlay.classList.add("show");
   errorOverlay.classList.remove("show");
+  // Show reconnect hint if we have stored credentials (background reconnecting)
+  const hint = document.getElementById("pairReconnectHint");
+  hint.style.display = (roomId && pairSecret) ? "block" : "none";
   setTimeout(() => document.getElementById("codeInput").focus(), 100);
 }
 
 function hidePairOverlay() {
   pairOverlay.classList.remove("show");
 }
+
+// "Clear old pairing" button in pair overlay
+document.getElementById("pairClearBtn").addEventListener("click", () => {
+  cleanup();
+  localStorage.removeItem("sinput_room_id");
+  localStorage.removeItem("sinput_pair_secret");
+  roomId = null;
+  pairSecret = null;
+  desktopOnline = false;
+  setState("unpaired");
+  document.getElementById("pairReconnectHint").style.display = "none";
+});
 
 if (!roomId || !pairSecret) {
   showPairInput();
