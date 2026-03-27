@@ -64,14 +64,6 @@ export class PairCodeRegistry implements DurableObject {
         });
       }
 
-      if (Date.now() > entry.expiresAt) {
-        await this.state.storage.delete(`code:${code}`);
-        return new Response(JSON.stringify({ error: "CODE_EXPIRED" }), {
-          status: 410,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
       entry.attempts++;
       if (entry.attempts > 5) {
         await this.state.storage.delete(`code:${code}`);

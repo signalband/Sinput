@@ -519,7 +519,7 @@ async function submitCode() {
     const data = await res.json();
 
     if (!res.ok) {
-      const msgs = { INVALID_CODE: "配对码无效", CODE_EXPIRED: "配对码已过期", TOO_MANY_ATTEMPTS: "尝试次数过多" };
+      const msgs = { INVALID_CODE: "配对码无效，请重新输入", TOO_MANY_ATTEMPTS: "尝试次数过多，请稍后再试" };
       errorEl.textContent = msgs[data.error] || "配对失败";
       document.getElementById("codeSubmit").textContent = "配对";
       document.getElementById("codeSubmit").disabled = false;
