@@ -179,6 +179,9 @@ export class SinputRoom implements DurableObject {
     }
 
     this.cancelDestroy();
+    // Purge stale connections before broadcasting — ensures desktopOnline/phoneOnline
+    // reflects reality, not half-open ghosts from hibernation or network drops
+    this.purgeStaleClients();
     this.broadcastStatus();
   }
 
@@ -221,6 +224,8 @@ export class SinputRoom implements DurableObject {
     const client = this.clients.get(ws);
     if (client) {
       client.lastPing = Date.now();
+      // Persist to attachment so hibernation restores accurate timestamp
+      ws.serializeAttachment({ role: client.role, deviceId: client.deviceId, lastPing: client.lastPing });
     }
     this.sendTo(ws, { type: "pong" });
   }
@@ -256,6 +261,16 @@ export class SinputRoom implements DurableObject {
       if (c.role === role) return c;
     }
     return null;
+  }
+
+  private purgeStaleClients() {
+    const now = Date.now();
+    for (const [ws, client] of this.clients) {
+      if (now - client.lastPing > HEARTBEAT_TIMEOUT_MS) {
+        this.clients.delete(ws);
+        try { ws.close(4005, "Heartbeat timeout"); } catch { /* */ }
+      }
+    }
   }
 
   private startHeartbeatCheck() {
