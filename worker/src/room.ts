@@ -142,14 +142,8 @@ export class SinputRoom implements DurableObject {
       return;
     }
 
-    // For phone role on first-ever connection, check token expiry
-    // After first connection, pairSecret alone is sufficient for re-auth
+    // Mark token as consumed on first phone connection
     if (msg.role === "phone" && !this.config.tokenConsumed) {
-      if (Date.now() > this.config.tokenExpiresAt) {
-        this.sendTo(ws, { type: "error", code: "TOKEN_EXPIRED", message: "Token expired" });
-        ws.close(4003, "TOKEN_EXPIRED");
-        return;
-      }
       this.config.tokenConsumed = true;
       await this.state.storage.put("config", this.config);
     }

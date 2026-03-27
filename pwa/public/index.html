@@ -361,6 +361,8 @@ localStorage.setItem("sinput_device_id", deviceId);
 if (roomId && pairSecret) {
   localStorage.setItem("sinput_room_id", roomId);
   localStorage.setItem("sinput_pair_secret", pairSecret);
+  // Remove secret from URL bar and browser history
+  history.replaceState(null, "", location.pathname);
 } else {
   roomId = localStorage.getItem("sinput_room_id");
   pairSecret = localStorage.getItem("sinput_pair_secret");
@@ -394,10 +396,14 @@ function render() {
     sendBtn.disabled = true;
     if (appState === "reconnect-failed") {
       setStatusUI("disconnected", "连接失败");
+      hidePairOverlay();
       showError("连接失败", "无法连接到服务器，请检查网络后重试");
+    } else if (appState === "connecting") {
+      // First connect with saved credentials — no pair overlay, just status
+      setStatusUI("connecting", "连接中...");
+      hidePairOverlay();
     } else if (appState === "reconnecting") {
       setStatusUI("connecting", "连接中...");
-      // Show pair overlay with connecting hint, background reconnects
       showPairInput();
     } else if (appState === "paired-waiting") {
       setStatusUI("disconnected", "等待电脑连接");
@@ -561,7 +567,8 @@ function cleanup() {
 function connect() {
   if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
   cleanup();
-  setState("reconnecting");
+  // First connect shows "connecting" (no pair overlay); reconnect shows pair input
+  setState(reconnectAttempt === 0 ? "connecting" : "reconnecting");
 
   const socket = new WebSocket(API_BASE + `/api/room/${roomId}/ws`);
   ws = socket;
@@ -607,7 +614,18 @@ function connect() {
     if (ws !== socket) return;
     ws = null;
     stopHeartbeat();
-    if (e.code >= 4001 && e.code <= 4007) return;
+    // Fatal auth/room errors — clear stale credentials, show pair input
+    if (e.code >= 4001 && e.code <= 4007) {
+      localStorage.removeItem("sinput_room_id");
+      localStorage.removeItem("sinput_pair_secret");
+      roomId = null;
+      pairSecret = null;
+      desktopOnline = false;
+      setState("unpaired");
+      return;
+    }
+    // Don't reconnect to null roomId (credentials were already cleared)
+    if (!roomId) { setState("unpaired"); return; }
     sendBtn.disabled = true;
     scheduleReconnect();
   };

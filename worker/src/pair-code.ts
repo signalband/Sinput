@@ -64,18 +64,8 @@ export class PairCodeRegistry implements DurableObject {
         });
       }
 
-      entry.attempts++;
-      if (entry.attempts > 5) {
-        await this.state.storage.delete(`code:${code}`);
-        return new Response(JSON.stringify({ error: "TOO_MANY_ATTEMPTS" }), {
-          status: 429,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
-      // Consume the code (one-time use)
-      await this.state.storage.delete(`code:${code}`);
-
+      // Code is NOT consumed on lookup — allows retry if WS connect fails after.
+      // Code expires naturally via TTL. pairSecret is the real auth credential.
       return new Response(
         JSON.stringify({
           roomId: entry.roomId,
