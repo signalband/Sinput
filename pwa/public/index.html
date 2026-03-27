@@ -475,6 +475,11 @@ function showPairInput() {
 
 function hidePairOverlay() {
   pairOverlay.classList.remove("show");
+  // Reset submit button state
+  const btn = document.getElementById("codeSubmit");
+  btn.textContent = "配对";
+  btn.style.background = "";
+  btn.disabled = false;
 }
 
 // "Clear old pairing" button in pair overlay
@@ -529,30 +534,21 @@ async function submitCode() {
       return;
     }
 
-    // Success — kill old WS immediately to prevent race condition
+    // Success — kill old WS, store new credentials, connect immediately
     cleanup();
-
-    // Success magic moment
-    const codeInput = document.getElementById("codeInput");
-    codeInput.style.borderColor = "var(--green)";
-    document.getElementById("codeSubmit").textContent = "✓ 已连接";
-    document.getElementById("codeSubmit").style.background = "var(--green)";
 
     roomId = data.roomId;
     pairSecret = data.pairSecret;
     localStorage.setItem("sinput_room_id", roomId);
     localStorage.setItem("sinput_pair_secret", pairSecret);
 
-    setTimeout(() => {
-      hidePairOverlay();
-      document.getElementById("codeSubmit").textContent = "配对";
-      document.getElementById("codeSubmit").style.background = "";
-      document.getElementById("codeSubmit").disabled = false;
-      codeInput.style.borderColor = "";
-      codeInput.value = "";
-      isSubmitting = false;
-      connect();
-    }, 600);
+    // Don't show fake "已连接" — let WS status determine UI
+    document.getElementById("codeSubmit").textContent = "连接中...";
+    document.getElementById("codeInput").value = "";
+    isSubmitting = false;
+
+    // Connect immediately, no artificial delay
+    connect();
   } catch {
     errorEl.textContent = "网络错误，请重试";
     document.getElementById("codeSubmit").textContent = "配对";
