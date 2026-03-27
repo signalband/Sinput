@@ -321,8 +321,7 @@
     <div id="codeError" class="pair-code-error"></div>
     <button id="codeSubmit" class="pair-submit">配对</button>
     <div id="pairReconnectHint" style="display:none;margin-top:12px;font-size:12px;color:var(--text2);text-align:center">
-      正在尝试重新连接...
-      <button id="pairClearBtn" style="display:block;margin:8px auto 0;background:none;border:none;color:var(--text2);font-size:12px;text-decoration:underline;cursor:pointer;padding:8px;min-height:44px">清除旧配对，重新连接</button>
+      电脑未在线，输入新配对码即可重新连接
     </div>
   </div>
 
@@ -482,17 +481,8 @@ function hidePairOverlay() {
   btn.disabled = false;
 }
 
-// "Clear old pairing" button in pair overlay
-document.getElementById("pairClearBtn").addEventListener("click", () => {
-  cleanup();
-  localStorage.removeItem("sinput_room_id");
-  localStorage.removeItem("sinput_pair_secret");
-  roomId = null;
-  pairSecret = null;
-  desktopOnline = false;
-  setState("unpaired");
-  document.getElementById("pairReconnectHint").style.display = "none";
-});
+// submitCode already calls cleanup() + replaces credentials,
+// so no separate "clear" button needed
 
 if (!roomId || !pairSecret) {
   showPairInput();
